@@ -1,0 +1,1 @@
+Code based on the book [Introduction - Writing NES Emulator in Rust](https://bugzmanov.github.io/nes_ebook/).
