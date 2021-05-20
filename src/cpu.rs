@@ -60,7 +60,28 @@ impl CPU {
             match opcode {
                 0xA9 => {
                     self.lda(&AddressingMode::Immediate);
-                    self.program_counter += 1;
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::Immediate);
+                }
+                0xA5 => {
+                    self.lda(&AddressingMode::ZeroPage);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
+                }
+                0xAD => {
+                    self.lda(&AddressingMode::Absolute);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::Absolute);
+                }
+                0x85 => {
+                    self.sda(&AddressingMode::ZeroPage);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
+                }
+                0x95 => {
+                    self.sda(&AddressingMode::ZeroPageX);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPageX);
                 }
                 0xAA => {
                     self.register_x = self.register_a;
@@ -83,6 +104,11 @@ impl CPU {
         let value = self.mem_read(addr);
         self.register_a = value;
         self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn sda(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_a);
     }
 
     fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
@@ -116,6 +142,21 @@ impl CPU {
                     .wrapping_add(self.register_y.into());
                 self.mem_read_u16(ptr)
             }
+            AddressingMode::NoneAddressing => {
+                panic!("mode {:?} not supported", mode);
+            }
+        }
+    }
+
+    fn get_program_counter_increment(&self, mode: &AddressingMode) -> u16 {
+        match mode {
+            AddressingMode::Immediate
+            | AddressingMode::ZeroPage
+            | AddressingMode::ZeroPageX
+            | AddressingMode::ZeroPageY
+            | AddressingMode::IndirectX
+            | AddressingMode::IndirectY => 1,
+            AddressingMode::Absolute | AddressingMode::AbsoluteX | AddressingMode::AbsoluteY => 2,
             AddressingMode::NoneAddressing => {
                 panic!("mode {:?} not supported", mode);
             }
@@ -178,6 +219,45 @@ mod test {
         cpu.load_and_run(vec![0xa9, 0xf0, 0x00]);
         assert_eq!(cpu.register_a, 0xf0);
         assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[test]
+    fn lda_zero_page() {
+        let mut cpu = CPU::new();
+        cpu.mem_write(0x10, 99);
+        cpu.load_and_run(vec![0xa5, 0x10, 0x00]);
+        assert_eq!(cpu.register_a, 99);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[test]
+    fn lda_absolute() {
+        let mut cpu = CPU::new();
+        cpu.mem_write(0x70e4, 99);
+        cpu.load_and_run(vec![0xad, 0xe4, 0x70, 0x00]);
+        assert_eq!(cpu.register_a, 99);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[test]
+    fn sda_zero_page() {
+        let mut cpu = CPU::new();
+        cpu.load(vec![0x85, 0x10, 0x00]);
+        cpu.reset();
+        cpu.register_a = 5;
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x10), 5);
+    }
+
+    #[test]
+    fn sda_zero_page_x() {
+        let mut cpu = CPU::new();
+        cpu.load(vec![0x95, 0x10, 0x00]);
+        cpu.reset();
+        cpu.register_a = 5;
+        cpu.register_x = 2;
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x12), 5);
     }
 
     #[test]
