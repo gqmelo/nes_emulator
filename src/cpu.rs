@@ -68,20 +68,105 @@ impl CPU {
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::ZeroPage);
                 }
+                0xB5 => {
+                    self.lda(&AddressingMode::ZeroPageX);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPageX);
+                }
                 0xAD => {
                     self.lda(&AddressingMode::Absolute);
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::Absolute);
                 }
+                0xBD => {
+                    self.lda(&AddressingMode::AbsoluteX);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::AbsoluteX);
+                }
+                0xB9 => {
+                    self.lda(&AddressingMode::AbsoluteY);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::AbsoluteY);
+                }
+                0xA1 => {
+                    self.lda(&AddressingMode::IndirectX);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::IndirectX);
+                }
+                0xB1 => {
+                    self.lda(&AddressingMode::IndirectY);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::IndirectY);
+                }
+                0xA2 => {
+                    self.ldx(&AddressingMode::Immediate);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::Immediate);
+                }
+                0xA6 => {
+                    self.ldx(&AddressingMode::ZeroPage);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
+                }
+                0xAE => {
+                    self.ldx(&AddressingMode::Absolute);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::Absolute);
+                }
+                0xA0 => {
+                    self.ldy(&AddressingMode::Immediate);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::Immediate);
+                }
+                0xA4 => {
+                    self.ldy(&AddressingMode::ZeroPage);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
+                }
+                0xAC => {
+                    self.ldy(&AddressingMode::Absolute);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::Absolute);
+                }
                 0x85 => {
-                    self.sda(&AddressingMode::ZeroPage);
+                    self.sta(&AddressingMode::ZeroPage);
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::ZeroPage);
                 }
                 0x95 => {
-                    self.sda(&AddressingMode::ZeroPageX);
+                    self.sta(&AddressingMode::ZeroPageX);
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::ZeroPageX);
+                }
+                0x86 => {
+                    self.stx(&AddressingMode::ZeroPage);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
+                }
+                0x96 => {
+                    self.stx(&AddressingMode::ZeroPageY);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPageY);
+                }
+                0x8E => {
+                    self.stx(&AddressingMode::Absolute);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::Absolute);
+                }
+                0x84 => {
+                    self.sty(&AddressingMode::ZeroPage);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
+                }
+                0x94 => {
+                    self.sty(&AddressingMode::ZeroPageX);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPageX);
+                }
+                0x8C => {
+                    self.sty(&AddressingMode::Absolute);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::Absolute);
                 }
                 0xAA => {
                     self.register_x = self.register_a;
@@ -106,9 +191,33 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn sda(&mut self, mode: &AddressingMode) {
+    fn ldx(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.register_x = value;
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn ldy(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.register_y = value;
+        self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn sta(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_a);
+    }
+
+    fn stx(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_x);
+    }
+
+    fn sty(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_y);
     }
 
     fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
@@ -132,15 +241,14 @@ impl CPU {
                 .wrapping_add(self.register_y.into()),
             AddressingMode::IndirectX => {
                 let ptr = self
-                    .mem_read_u16(self.program_counter)
+                    .mem_read(self.program_counter)
                     .wrapping_add(self.register_x.into());
-                self.mem_read_u16(ptr)
+                self.mem_read_u16(ptr.into())
             }
             AddressingMode::IndirectY => {
-                let ptr = self
-                    .mem_read_u16(self.program_counter)
-                    .wrapping_add(self.register_y.into());
-                self.mem_read_u16(ptr)
+                let ptr = self.mem_read(self.program_counter);
+                self.mem_read_u16(ptr.into())
+                    .wrapping_add(self.register_y.into())
             }
             AddressingMode::NoneAddressing => {
                 panic!("mode {:?} not supported", mode);
@@ -197,51 +305,112 @@ impl CPU {
 #[cfg(test)]
 mod test {
     use super::*;
+    use rstest::*;
 
-    #[test]
-    fn lda_immediate_load_data() {
-        let mut cpu = CPU::new();
-        cpu.load_and_run(vec![0xa9, 0x05, 0x00]);
+    #[fixture]
+    fn cpu() -> CPU {
+        CPU::new()
+    }
+
+    #[rstest]
+    #[case(vec![0xa9, 0x05, 0x00])] // lda #$05
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x86, 0x10, // stx $10
+        0xa5, 0x10, // lda $10
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x86, 0x15, // stx $15
+        0xb5, 0x10, // lda $10,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x8e, 0xe4, 0x70, // stx $70e4
+        0xad, 0xe4, 0x70, // lda $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xbd, 0xe4, 0x70, // lda $70e4,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa0, 0x05, // ldy #$05
+        0x8c, 0xe9, 0x70, // sty $70e9
+        0xb9, 0xe4, 0x70, // lda $70e4,Y
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x01, // ldx #$01
+        0xa9, 0xe4, // lda #$e4
+        0x85, 0x02, // sta $02
+        0xa9, 0x70, // lda #$70
+        0x85, 0x03, // sta $03
+        0xa0, 0x05, // ldy #$05
+        0x8c, 0xe4, 0x70, // sty $70e4
+        0xa1, 0x01, // lda ($01,X)
+        0x00
+    ])]
+    #[case(vec![
+        0xa0, 0x01, // ldy #$01
+        0xa9, 0xe4, // lda #$e4
+        0x85, 0x02, // sta $02
+        0xa9, 0x70, // lda #$70
+        0x85, 0x03, // sta $03
+        0xa2, 0x05, // ldx #$05
+        0x8e, 0xe5, 0x70, // stx $70e5
+        0xb1, 0x02, // lda ($02),Y
+        0x00
+    ])]
+    fn lda(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load_and_run(program);
         assert_eq!(cpu.register_a, 0x05);
         assert_eq!(cpu.status, 0x0000_0000);
     }
 
-    #[test]
-    fn lda_zero_flag() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn lda_indirect_x(mut cpu: CPU) {
+        cpu.load(vec![0xa1, 0x01, 0x00]);
+        cpu.reset();
+        cpu.register_x = 0x01;
+        cpu.mem_write_u16(0x0002, 0x70e4);
+        cpu.mem_write(0x70e4, 0x05);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn lda_indirect_y(mut cpu: CPU) {
+        cpu.load(vec![0xb1, 0x02, 0x00]);
+        cpu.reset();
+        cpu.register_y = 0x01;
+        cpu.mem_write_u16(0x02, 0x70e4);
+        cpu.mem_write(0x70e5, 0x05);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn lda_zero_flag(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa9, 0x00, 0x00]);
         assert_eq!(cpu.status, 0b0000_0010);
     }
 
-    #[test]
-    fn lda_negative_flag() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn lda_negative_flag(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa9, 0xf0, 0x00]);
         assert_eq!(cpu.register_a, 0xf0);
         assert_eq!(cpu.status, 0b1000_0000);
     }
 
-    #[test]
-    fn lda_zero_page() {
-        let mut cpu = CPU::new();
-        cpu.mem_write(0x10, 99);
-        cpu.load_and_run(vec![0xa5, 0x10, 0x00]);
-        assert_eq!(cpu.register_a, 99);
-        assert_eq!(cpu.status, 0x0000_0000);
-    }
-
-    #[test]
-    fn lda_absolute() {
-        let mut cpu = CPU::new();
-        cpu.mem_write(0x70e4, 99);
-        cpu.load_and_run(vec![0xad, 0xe4, 0x70, 0x00]);
-        assert_eq!(cpu.register_a, 99);
-        assert_eq!(cpu.status, 0x0000_0000);
-    }
-
-    #[test]
-    fn sda_zero_page() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn sta_zero_page(mut cpu: CPU) {
         cpu.load(vec![0x85, 0x10, 0x00]);
         cpu.reset();
         cpu.register_a = 5;
@@ -249,9 +418,8 @@ mod test {
         assert_eq!(cpu.mem_read(0x10), 5);
     }
 
-    #[test]
-    fn sda_zero_page_x() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn sta_zero_page_x(mut cpu: CPU) {
         cpu.load(vec![0x95, 0x10, 0x00]);
         cpu.reset();
         cpu.register_a = 5;
@@ -260,32 +428,28 @@ mod test {
         assert_eq!(cpu.mem_read(0x12), 5);
     }
 
-    #[test]
-    fn tax() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn tax(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa9, 0x05, 0xaa, 0x00]);
         assert_eq!(cpu.register_x, 0x05);
         assert_eq!(cpu.status, 0x0000_0000);
     }
 
-    #[test]
-    fn tax_zero_flag() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn tax_zero_flag(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa9, 0x00, 0xaa, 0x00]);
         assert_eq!(cpu.status, 0b0000_0010);
     }
 
-    #[test]
-    fn tax_negative_flag() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn tax_negative_flag(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa9, 0xf0, 0xaa, 0x00]);
         assert_eq!(cpu.register_x, 0xf0);
         assert_eq!(cpu.status, 0b1000_0000);
     }
 
-    #[test]
-    fn inx() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn inx(mut cpu: CPU) {
         cpu.load(vec![0xe8, 0x00]);
         cpu.reset();
         cpu.register_x = 10;
@@ -294,9 +458,8 @@ mod test {
         assert_eq!(cpu.status, 0x0000_0000);
     }
 
-    #[test]
-    fn inx_zero_flag() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn inx_zero_flag(mut cpu: CPU) {
         cpu.load(vec![0xe8, 0x00]);
         cpu.reset();
         cpu.register_x = 0xff;
@@ -305,9 +468,8 @@ mod test {
         assert_eq!(cpu.status, 0b0000_0010);
     }
 
-    #[test]
-    fn inx_negative_flag() {
-        let mut cpu = CPU::new();
+    #[rstest]
+    fn inx_negative_flag(mut cpu: CPU) {
         cpu.load(vec![0xe8, 0x00]);
         cpu.reset();
         cpu.register_x = 0xfe;
