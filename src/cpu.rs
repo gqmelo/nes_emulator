@@ -108,10 +108,20 @@ impl CPU {
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::ZeroPage);
                 }
+                0xB6 => {
+                    self.ldx(&AddressingMode::ZeroPageY);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPageY);
+                }
                 0xAE => {
                     self.ldx(&AddressingMode::Absolute);
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::Absolute);
+                }
+                0xBE => {
+                    self.ldx(&AddressingMode::AbsoluteY);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::AbsoluteY);
                 }
                 0xA0 => {
                     self.ldy(&AddressingMode::Immediate);
@@ -123,10 +133,20 @@ impl CPU {
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::ZeroPage);
                 }
+                0xB4 => {
+                    self.ldy(&AddressingMode::ZeroPageX);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::ZeroPageX);
+                }
                 0xAC => {
                     self.ldy(&AddressingMode::Absolute);
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::Absolute);
+                }
+                0xBC => {
+                    self.ldy(&AddressingMode::AbsoluteX);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::AbsoluteX);
                 }
                 0x85 => {
                     self.sta(&AddressingMode::ZeroPage);
@@ -137,6 +157,11 @@ impl CPU {
                     self.sta(&AddressingMode::ZeroPageX);
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::ZeroPageX);
+                }
+                0x8D => {
+                    self.sta(&AddressingMode::Absolute);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::Absolute);
                 }
                 0x86 => {
                     self.stx(&AddressingMode::ZeroPage);
@@ -179,7 +204,7 @@ impl CPU {
                 0x00 => {
                     return;
                 }
-                _ => todo!(),
+                _ => todo!("{:#04x}", opcode),
             }
         }
     }
@@ -344,28 +369,6 @@ mod test {
         0xb9, 0xe4, 0x70, // lda $70e4,Y
         0x00
     ])]
-    #[case(vec![
-        0xa2, 0x01, // ldx #$01
-        0xa9, 0xe4, // lda #$e4
-        0x85, 0x02, // sta $02
-        0xa9, 0x70, // lda #$70
-        0x85, 0x03, // sta $03
-        0xa0, 0x05, // ldy #$05
-        0x8c, 0xe4, 0x70, // sty $70e4
-        0xa1, 0x01, // lda ($01,X)
-        0x00
-    ])]
-    #[case(vec![
-        0xa0, 0x01, // ldy #$01
-        0xa9, 0xe4, // lda #$e4
-        0x85, 0x02, // sta $02
-        0xa9, 0x70, // lda #$70
-        0x85, 0x03, // sta $03
-        0xa2, 0x05, // ldx #$05
-        0x8e, 0xe5, 0x70, // stx $70e5
-        0xb1, 0x02, // lda ($02),Y
-        0x00
-    ])]
     fn lda(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load_and_run(program);
         assert_eq!(cpu.register_a, 0x05);
@@ -406,6 +409,96 @@ mod test {
     fn lda_negative_flag(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa9, 0xf0, 0x00]);
         assert_eq!(cpu.register_a, 0xf0);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    #[case(vec![0xa2, 0x05, 0x00])] // ldx #$05
+    #[case(vec![
+        0xa9, 0x05, // lda #$05
+        0x85, 0x10, // sta $10
+        0xa6, 0x10, // ldx $10
+        0x00
+    ])]
+    #[case(vec![
+        0xa0, 0x05, // ldy #$05
+        0x84, 0x15, // sty $15
+        0xb6, 0x10, // ldx $10,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x05, // lda #$05
+        0x8d, 0xe4, 0x70, // sta $70e4
+        0xae, 0xe4, 0x70, // ldx $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0xa0, 0x05, // ldy #$05
+        0x8c, 0xe9, 0x70, // sty $70e9
+        0xbe, 0xe4, 0x70, // ldx $70e4,Y
+        0x00
+    ])]
+    fn ldx(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load_and_run(program);
+        assert_eq!(cpu.register_x, 0x05);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn ldx_zero_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa2, 0x00, 0x00]);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn ldx_negative_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa2, 0xf0, 0x00]);
+        assert_eq!(cpu.register_x, 0xf0);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    #[case(vec![0xa0, 0x05, 0x00])] // ldy #$05
+    #[case(vec![
+        0xa9, 0x05, // lda #$05
+        0x85, 0x10, // sta $10
+        0xa4, 0x10, // ldy $10
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x86, 0x15, // stx $15
+        0xb4, 0x10, // ldy $10,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x05, // lda #$05
+        0x8d, 0xe4, 0x70, // sta $70e4
+        0xac, 0xe4, 0x70, // ldy $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xbc, 0xe4, 0x70, // ldy $70e4,Y
+        0x00
+    ])]
+    fn ldy(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load_and_run(program);
+        assert_eq!(cpu.register_y, 0x05);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn ldy_zero_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa0, 0x00, 0x00]);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn ldy_negative_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa0, 0xf0, 0x00]);
+        assert_eq!(cpu.register_y, 0xf0);
         assert_eq!(cpu.status, 0b1000_0000);
     }
 
