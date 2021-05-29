@@ -54,6 +54,10 @@ impl CPU {
 
     pub fn run(&mut self) {
         loop {
+            println!(
+                "a: {:#04x}; x: {:#04x}; y: {:#04x}",
+                self.register_a, self.register_x, self.register_y
+            );
             let opcode = self.mem_read(self.program_counter);
             self.program_counter += 1;
 
@@ -162,6 +166,26 @@ impl CPU {
                     self.sta(&AddressingMode::Absolute);
                     self.program_counter +=
                         self.get_program_counter_increment(&AddressingMode::Absolute);
+                }
+                0x9D => {
+                    self.sta(&AddressingMode::AbsoluteX);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::AbsoluteX);
+                }
+                0x99 => {
+                    self.sta(&AddressingMode::AbsoluteY);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::AbsoluteY);
+                }
+                0x81 => {
+                    self.sta(&AddressingMode::IndirectX);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::IndirectX);
+                }
+                0x91 => {
+                    self.sta(&AddressingMode::IndirectY);
+                    self.program_counter +=
+                        self.get_program_counter_increment(&AddressingMode::IndirectY);
                 }
                 0x86 => {
                     self.stx(&AddressingMode::ZeroPage);
@@ -503,8 +527,14 @@ mod test {
     }
 
     #[rstest]
-    fn sta_zero_page(mut cpu: CPU) {
-        cpu.load(vec![0x85, 0x10, 0x00]);
+    #[case(vec![0x85, 0x10, 0x00])] // sta $10
+    #[case(vec![
+        0xa2, 0x02, // ldx #$02
+        0x95, 0x0e, // sta $0e
+        0x00
+    ])]
+    fn sta_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
         cpu.reset();
         cpu.register_a = 5;
         cpu.run();
@@ -512,13 +542,97 @@ mod test {
     }
 
     #[rstest]
-    fn sta_zero_page_x(mut cpu: CPU) {
-        cpu.load(vec![0x95, 0x10, 0x00]);
+    #[case(vec![0x8d, 0xe4, 0x70, 0x00])] // sta $70e4
+    #[case(vec![
+        0xa2, 0x02, // ldx #$02
+        0x9d, 0xe2, 0x70, // // sta $70e4,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa0, 0x02, // ldy #$02
+        0x99, 0xe2, 0x70, // // sta $70e4,Y
+        0x00
+    ])]
+    fn sta_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
         cpu.reset();
         cpu.register_a = 5;
-        cpu.register_x = 2;
         cpu.run();
-        assert_eq!(cpu.mem_read(0x12), 5);
+        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
+    }
+
+    #[rstest]
+    fn sta_indirect_x(mut cpu: CPU) {
+        cpu.load(vec![0x81, 0x01, 0x00]);
+        cpu.reset();
+        cpu.register_a = 5;
+        cpu.register_x = 0x01;
+        cpu.mem_write_u16(0x0002, 0x70e4);
+        cpu.run();
+
+        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn sta_indirect_y(mut cpu: CPU) {
+        cpu.load(vec![0x91, 0x02, 0x00]);
+        cpu.reset();
+        cpu.register_a = 5;
+        cpu.register_y = 0x01;
+        cpu.mem_write_u16(0x02, 0x70e3);
+        cpu.run();
+
+        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    #[case(vec![0x86, 0x10, 0x00])] // stx $10
+    #[case(vec![
+        0xa0, 0x02, // ldy #$02
+        0x96, 0x0e, // stx $0e
+        0x00
+    ])]
+    fn stx_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.reset();
+        cpu.register_x = 5;
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x10), 5);
+    }
+
+    #[rstest]
+    fn stx_absolute(mut cpu: CPU) {
+        cpu.load(vec![0x8e, 0xe4, 0x70, 0x00]); // stx $70e4
+        cpu.reset();
+        cpu.register_x = 5;
+        cpu.run();
+        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
+    }
+
+    #[rstest]
+    #[case(vec![0x84, 0x10, 0x00])] // sty $10
+    #[case(vec![
+        0xa2, 0x02, // ldx #$02
+        0x94, 0x0e, // sty $0e
+        0x00
+    ])]
+    fn sty_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.reset();
+        cpu.register_y = 5;
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x10), 5);
+    }
+
+    #[rstest]
+    fn sty_absolute(mut cpu: CPU) {
+        cpu.load(vec![0x8c, 0xe4, 0x70, 0x00]); // sty $70e4
+        cpu.reset();
+        cpu.register_y = 5;
+        cpu.run();
+        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
     }
 
     #[rstest]
