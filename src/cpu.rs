@@ -1,3 +1,5 @@
+use crate::opcodes;
+
 #[derive(Debug)]
 pub enum AddressingMode {
     Immediate,
@@ -53,183 +55,33 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
+        let ref opcodes = *opcodes::OPCODES_MAP;
         loop {
             println!(
                 "a: {:#04x}; x: {:#04x}; y: {:#04x}",
                 self.register_a, self.register_x, self.register_y
             );
-            let opcode = self.mem_read(self.program_counter);
+            let code = self.mem_read(self.program_counter);
             self.program_counter += 1;
 
-            match opcode {
-                0xA9 => {
-                    self.lda(&AddressingMode::Immediate);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::Immediate);
-                }
-                0xA5 => {
-                    self.lda(&AddressingMode::ZeroPage);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
-                }
-                0xB5 => {
-                    self.lda(&AddressingMode::ZeroPageX);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPageX);
-                }
-                0xAD => {
-                    self.lda(&AddressingMode::Absolute);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::Absolute);
-                }
-                0xBD => {
-                    self.lda(&AddressingMode::AbsoluteX);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::AbsoluteX);
-                }
-                0xB9 => {
-                    self.lda(&AddressingMode::AbsoluteY);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::AbsoluteY);
-                }
-                0xA1 => {
-                    self.lda(&AddressingMode::IndirectX);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::IndirectX);
-                }
-                0xB1 => {
-                    self.lda(&AddressingMode::IndirectY);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::IndirectY);
-                }
-                0xA2 => {
-                    self.ldx(&AddressingMode::Immediate);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::Immediate);
-                }
-                0xA6 => {
-                    self.ldx(&AddressingMode::ZeroPage);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
-                }
-                0xB6 => {
-                    self.ldx(&AddressingMode::ZeroPageY);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPageY);
-                }
-                0xAE => {
-                    self.ldx(&AddressingMode::Absolute);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::Absolute);
-                }
-                0xBE => {
-                    self.ldx(&AddressingMode::AbsoluteY);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::AbsoluteY);
-                }
-                0xA0 => {
-                    self.ldy(&AddressingMode::Immediate);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::Immediate);
-                }
-                0xA4 => {
-                    self.ldy(&AddressingMode::ZeroPage);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
-                }
-                0xB4 => {
-                    self.ldy(&AddressingMode::ZeroPageX);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPageX);
-                }
-                0xAC => {
-                    self.ldy(&AddressingMode::Absolute);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::Absolute);
-                }
-                0xBC => {
-                    self.ldy(&AddressingMode::AbsoluteX);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::AbsoluteX);
-                }
-                0x85 => {
-                    self.sta(&AddressingMode::ZeroPage);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
-                }
-                0x95 => {
-                    self.sta(&AddressingMode::ZeroPageX);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPageX);
-                }
-                0x8D => {
-                    self.sta(&AddressingMode::Absolute);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::Absolute);
-                }
-                0x9D => {
-                    self.sta(&AddressingMode::AbsoluteX);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::AbsoluteX);
-                }
-                0x99 => {
-                    self.sta(&AddressingMode::AbsoluteY);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::AbsoluteY);
-                }
-                0x81 => {
-                    self.sta(&AddressingMode::IndirectX);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::IndirectX);
-                }
-                0x91 => {
-                    self.sta(&AddressingMode::IndirectY);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::IndirectY);
-                }
-                0x86 => {
-                    self.stx(&AddressingMode::ZeroPage);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
-                }
-                0x96 => {
-                    self.stx(&AddressingMode::ZeroPageY);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPageY);
-                }
-                0x8E => {
-                    self.stx(&AddressingMode::Absolute);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::Absolute);
-                }
-                0x84 => {
-                    self.sty(&AddressingMode::ZeroPage);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPage);
-                }
-                0x94 => {
-                    self.sty(&AddressingMode::ZeroPageX);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::ZeroPageX);
-                }
-                0x8C => {
-                    self.sty(&AddressingMode::Absolute);
-                    self.program_counter +=
-                        self.get_program_counter_increment(&AddressingMode::Absolute);
-                }
-                0xAA => {
-                    self.register_x = self.register_a;
-                    self.update_zero_and_negative_flags(self.register_x);
-                }
-                0xE8 => {
-                    self.register_x = self.register_x.wrapping_add(1);
-                    self.update_zero_and_negative_flags(self.register_x);
-                }
-                0x00 => {
-                    return;
-                }
-                _ => todo!("{:#04x}", opcode),
-            }
+            let opcode = opcodes
+                .get(&code)
+                .expect(&format!("invalid opcode: {:#04x}", code));
+
+            match opcode.mnemonic {
+                "BRK" => return,
+                "INX" => self.inx(),
+                "LDA" => self.lda(&opcode.mode),
+                "LDX" => self.ldx(&opcode.mode),
+                "LDY" => self.ldy(&opcode.mode),
+                "STA" => self.sta(&opcode.mode),
+                "STX" => self.stx(&opcode.mode),
+                "STY" => self.sty(&opcode.mode),
+                "TAX" => self.tax(),
+                _ => todo!("{:#04x}", code),
+            };
+
+            self.program_counter += self.get_program_counter_increment(&opcode.mode);
         }
     }
 
@@ -267,6 +119,16 @@ impl CPU {
     fn sty(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_y);
+    }
+
+    fn tax(&mut self) {
+        self.register_x = self.register_a;
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn inx(&mut self) {
+        self.register_x = self.register_x.wrapping_add(1);
+        self.update_zero_and_negative_flags(self.register_x);
     }
 
     fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
@@ -307,6 +169,7 @@ impl CPU {
 
     fn get_program_counter_increment(&self, mode: &AddressingMode) -> u16 {
         match mode {
+            AddressingMode::NoneAddressing => 0,
             AddressingMode::Immediate
             | AddressingMode::ZeroPage
             | AddressingMode::ZeroPageX
@@ -314,9 +177,6 @@ impl CPU {
             | AddressingMode::IndirectX
             | AddressingMode::IndirectY => 1,
             AddressingMode::Absolute | AddressingMode::AbsoluteX | AddressingMode::AbsoluteY => 2,
-            AddressingMode::NoneAddressing => {
-                panic!("mode {:?} not supported", mode);
-            }
         }
     }
 
