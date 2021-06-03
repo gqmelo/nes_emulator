@@ -22,8 +22,14 @@ impl OpCode {
 lazy_static! {
     pub static ref CPU_OPS_CODES: Vec<OpCode> = vec![
         OpCode::new(0x00, "BRK", 1, AddressingMode::NoneAddressing),
-        // INX
+        // INC
+        OpCode::new(0xe6, "INC", 5, AddressingMode::ZeroPage),
+        OpCode::new(0xf6, "INC", 6, AddressingMode::ZeroPageX),
+        OpCode::new(0xee, "INC", 6, AddressingMode::Absolute),
+        OpCode::new(0xfe, "INC", 7, AddressingMode::AbsoluteX),
+        //
         OpCode::new(0xe8, "INX", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xc8, "INY", 2, AddressingMode::NoneAddressing),
         // LDA
         OpCode::new(0xa9, "LDA", 2, AddressingMode::Immediate),
         OpCode::new(0xa5, "LDA", 3, AddressingMode::ZeroPage),
@@ -61,8 +67,9 @@ lazy_static! {
         OpCode::new(0x84, "STY", 3, AddressingMode::ZeroPage),
         OpCode::new(0x94, "STY", 4, AddressingMode::ZeroPageX),
         OpCode::new(0x8c, "STY", 4, AddressingMode::Absolute),
-        // TAX
+        //
         OpCode::new(0xaa, "TAX", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xa8, "TAY", 2, AddressingMode::NoneAddressing),
     ];
     pub static ref OPCODES_MAP: HashMap<u8, &'static OpCode> = {
         let mut map = HashMap::new();

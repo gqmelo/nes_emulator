@@ -70,7 +70,9 @@ impl CPU {
 
             match opcode.mnemonic {
                 "BRK" => return,
+                "INC" => self.inc(&opcode.mode),
                 "INX" => self.inx(),
+                "INY" => self.iny(),
                 "LDA" => self.lda(&opcode.mode),
                 "LDX" => self.ldx(&opcode.mode),
                 "LDY" => self.ldy(&opcode.mode),
@@ -78,6 +80,7 @@ impl CPU {
                 "STX" => self.stx(&opcode.mode),
                 "STY" => self.sty(&opcode.mode),
                 "TAX" => self.tax(),
+                "TAY" => self.tay(),
                 _ => todo!("{:#04x}", code),
             };
 
@@ -126,9 +129,26 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_x);
     }
 
+    fn tay(&mut self) {
+        self.register_y = self.register_a;
+        self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn inc(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let new_value = self.mem_read(addr).wrapping_add(1);
+        self.mem_write(addr, new_value);
+        self.update_zero_and_negative_flags(new_value);
+    }
+
     fn inx(&mut self) {
         self.register_x = self.register_x.wrapping_add(1);
         self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn iny(&mut self) {
+        self.register_y = self.register_y.wrapping_add(1);
+        self.update_zero_and_negative_flags(self.register_y);
     }
 
     fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
@@ -505,6 +525,7 @@ mod test {
     #[rstest]
     fn tax_zero_flag(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa9, 0x00, 0xaa, 0x00]);
+        assert_eq!(cpu.register_x, 0x00);
         assert_eq!(cpu.status, 0b0000_0010);
     }
 
@@ -513,6 +534,57 @@ mod test {
         cpu.load_and_run(vec![0xa9, 0xf0, 0xaa, 0x00]);
         assert_eq!(cpu.register_x, 0xf0);
         assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn tay(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa9, 0x05, 0xa8, 0x00]);
+        assert_eq!(cpu.register_y, 0x05);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn tay_zero_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa9, 0x00, 0xa8, 0x00]);
+        assert_eq!(cpu.register_y, 0x00);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn tay_negative_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa9, 0xf0, 0xa8, 0x00]);
+        assert_eq!(cpu.register_y, 0xf0);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    #[case(vec![0xe6, 0x10, 0x00])] // inc $10
+    #[case(vec![
+        0xa2, 0x02, // ldx #$02
+        0xf6, 0x0e, // inc $0e,X
+        0x00
+    ])]
+    fn inc_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.reset();
+        cpu.mem_write(0x10, 5);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x10), 6);
+    }
+
+    #[rstest]
+    #[case(vec![0xee, 0xe4, 0x70, 0x00])] // inc $70e4
+    #[case(vec![
+        0xa2, 0x02, // ldx #$02
+        0xfe, 0xe2, 0x70, // // sta $70e4,X
+        0x00
+    ])]
+    fn inc_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.reset();
+        cpu.mem_write_u16(0x70e4, 5);
+        cpu.run();
+        assert_eq!(cpu.mem_read_u16(0x70e4), 6);
     }
 
     #[rstest]
@@ -542,6 +614,36 @@ mod test {
         cpu.register_x = 0xfe;
         cpu.run();
         assert_eq!(cpu.register_x, 0xff);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn iny(mut cpu: CPU) {
+        cpu.load(vec![0xc8, 0x00]);
+        cpu.reset();
+        cpu.register_y = 10;
+        cpu.run();
+        assert_eq!(cpu.register_y, 11);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn iny_zero_flag(mut cpu: CPU) {
+        cpu.load(vec![0xc8, 0x00]);
+        cpu.reset();
+        cpu.register_y = 0xff;
+        cpu.run();
+        assert_eq!(cpu.register_y, 0);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn iny_negative_flag(mut cpu: CPU) {
+        cpu.load(vec![0xc8, 0x00]);
+        cpu.reset();
+        cpu.register_y = 0xfe;
+        cpu.run();
+        assert_eq!(cpu.register_y, 0xff);
         assert_eq!(cpu.status, 0b1000_0000);
     }
 }
