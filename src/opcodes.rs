@@ -70,6 +70,10 @@ lazy_static! {
         //
         OpCode::new(0xaa, "TAX", 2, AddressingMode::NoneAddressing),
         OpCode::new(0xa8, "TAY", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xba, "TSX", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x8a, "TXA", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x9a, "TXS", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x98, "TYA", 2, AddressingMode::NoneAddressing),
     ];
     pub static ref OPCODES_MAP: HashMap<u8, &'static OpCode> = {
         let mut map = HashMap::new();

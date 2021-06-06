@@ -18,6 +18,7 @@ pub struct CPU {
     pub register_a: u8,
     pub register_x: u8,
     pub register_y: u8,
+    pub register_s: u8,
     pub status: u8,
     pub program_counter: u16,
     memory: [u8; 0xFFFF],
@@ -29,6 +30,7 @@ impl CPU {
             register_a: 0,
             register_x: 0,
             register_y: 0,
+            register_s: 0,
             status: 0,
             program_counter: 0,
             memory: [0; 0xFFFF],
@@ -37,19 +39,20 @@ impl CPU {
 
     pub fn load_and_run(&mut self, program: Vec<u8>) {
         self.load(program);
-        self.reset();
         self.run();
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
         self.memory[0x8000..(0x8000 + program.len())].copy_from_slice(&program[..]);
         self.mem_write_u16(0xFFFC, 0x8000);
+        self.reset();
     }
 
-    pub fn reset(&mut self) {
+    fn reset(&mut self) {
         self.register_a = 0;
         self.register_x = 0;
         self.register_y = 0;
+        self.register_s = 0;
         self.status = 0;
         self.program_counter = self.mem_read_u16(0xFFFC)
     }
@@ -81,6 +84,10 @@ impl CPU {
                 "STY" => self.sty(&opcode.mode),
                 "TAX" => self.tax(),
                 "TAY" => self.tay(),
+                "TSX" => self.tsx(),
+                "TXA" => self.txa(),
+                "TXS" => self.txs(),
+                "TYA" => self.tya(),
                 _ => todo!("{:#04x}", code),
             };
 
@@ -132,6 +139,26 @@ impl CPU {
     fn tay(&mut self) {
         self.register_y = self.register_a;
         self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn tsx(&mut self) {
+        self.register_x = self.register_s;
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn txa(&mut self) {
+        self.register_a = self.register_x;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn txs(&mut self) {
+        self.register_s = self.register_x;
+        self.update_zero_and_negative_flags(self.register_s);
+    }
+
+    fn tya(&mut self) {
+        self.register_a = self.register_y;
+        self.update_zero_and_negative_flags(self.register_a);
     }
 
     fn inc(&mut self, mode: &AddressingMode) {
@@ -282,7 +309,6 @@ mod test {
     #[rstest]
     fn lda_indirect_x(mut cpu: CPU) {
         cpu.load(vec![0xa1, 0x01, 0x00]);
-        cpu.reset();
         cpu.register_x = 0x01;
         cpu.mem_write_u16(0x0002, 0x70e4);
         cpu.mem_write(0x70e4, 0x05);
@@ -294,7 +320,6 @@ mod test {
     #[rstest]
     fn lda_indirect_y(mut cpu: CPU) {
         cpu.load(vec![0xb1, 0x02, 0x00]);
-        cpu.reset();
         cpu.register_y = 0x01;
         cpu.mem_write_u16(0x02, 0x70e4);
         cpu.mem_write(0x70e5, 0x05);
@@ -415,7 +440,6 @@ mod test {
     ])]
     fn sta_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.reset();
         cpu.register_a = 5;
         cpu.run();
         assert_eq!(cpu.mem_read(0x10), 5);
@@ -435,7 +459,6 @@ mod test {
     ])]
     fn sta_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.reset();
         cpu.register_a = 5;
         cpu.run();
         assert_eq!(cpu.mem_read_u16(0x70e4), 5);
@@ -444,7 +467,6 @@ mod test {
     #[rstest]
     fn sta_indirect_x(mut cpu: CPU) {
         cpu.load(vec![0x81, 0x01, 0x00]);
-        cpu.reset();
         cpu.register_a = 5;
         cpu.register_x = 0x01;
         cpu.mem_write_u16(0x0002, 0x70e4);
@@ -457,7 +479,6 @@ mod test {
     #[rstest]
     fn sta_indirect_y(mut cpu: CPU) {
         cpu.load(vec![0x91, 0x02, 0x00]);
-        cpu.reset();
         cpu.register_a = 5;
         cpu.register_y = 0x01;
         cpu.mem_write_u16(0x02, 0x70e3);
@@ -476,7 +497,6 @@ mod test {
     ])]
     fn stx_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.reset();
         cpu.register_x = 5;
         cpu.run();
         assert_eq!(cpu.mem_read(0x10), 5);
@@ -485,7 +505,6 @@ mod test {
     #[rstest]
     fn stx_absolute(mut cpu: CPU) {
         cpu.load(vec![0x8e, 0xe4, 0x70, 0x00]); // stx $70e4
-        cpu.reset();
         cpu.register_x = 5;
         cpu.run();
         assert_eq!(cpu.mem_read_u16(0x70e4), 5);
@@ -500,7 +519,6 @@ mod test {
     ])]
     fn sty_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.reset();
         cpu.register_y = 5;
         cpu.run();
         assert_eq!(cpu.mem_read(0x10), 5);
@@ -509,7 +527,6 @@ mod test {
     #[rstest]
     fn sty_absolute(mut cpu: CPU) {
         cpu.load(vec![0x8c, 0xe4, 0x70, 0x00]); // sty $70e4
-        cpu.reset();
         cpu.register_y = 5;
         cpu.run();
         assert_eq!(cpu.mem_read_u16(0x70e4), 5);
@@ -558,6 +575,96 @@ mod test {
     }
 
     #[rstest]
+    fn tsx(mut cpu: CPU) {
+        cpu.load(vec![0xba, 0x00]);
+        cpu.register_s = 5;
+        cpu.run();
+        assert_eq!(cpu.register_x, 0x05);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn tsx_zero_flag(mut cpu: CPU) {
+        cpu.load(vec![0xba, 0x00]);
+        cpu.register_s = 0;
+        cpu.run();
+        assert_eq!(cpu.register_x, 0x00);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn tsx_negative_flag(mut cpu: CPU) {
+        cpu.load(vec![0xba, 0x00]);
+        cpu.register_s = 0xf0;
+        cpu.run();
+        assert_eq!(cpu.register_x, 0xf0);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn txa(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa2, 0x05, 0x8a, 0x00]);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn txa_zero_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa2, 0x00, 0x8a, 0x00]);
+        assert_eq!(cpu.register_a, 0x00);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn txa_negative_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa2, 0xf0, 0x8a, 0x00]);
+        assert_eq!(cpu.register_a, 0xf0);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn txs(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa2, 0x05, 0x9a, 0x00]);
+        assert_eq!(cpu.register_s, 0x05);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn txs_zero_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa2, 0x00, 0x9a, 0x00]);
+        assert_eq!(cpu.register_s, 0x00);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn txs_negative_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa2, 0xf0, 0x9a, 0x00]);
+        assert_eq!(cpu.register_s, 0xf0);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn tya(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa0, 0x05, 0x98, 0x00]);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn tya_zero_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa0, 0x00, 0x98, 0x00]);
+        assert_eq!(cpu.register_a, 0x00);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn tya_negative_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0xa0, 0xf0, 0x98, 0x00]);
+        assert_eq!(cpu.register_a, 0xf0);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
     #[case(vec![0xe6, 0x10, 0x00])] // inc $10
     #[case(vec![
         0xa2, 0x02, // ldx #$02
@@ -566,7 +673,6 @@ mod test {
     ])]
     fn inc_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.reset();
         cpu.mem_write(0x10, 5);
         cpu.run();
         assert_eq!(cpu.mem_read(0x10), 6);
@@ -581,7 +687,6 @@ mod test {
     ])]
     fn inc_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.reset();
         cpu.mem_write_u16(0x70e4, 5);
         cpu.run();
         assert_eq!(cpu.mem_read_u16(0x70e4), 6);
@@ -590,7 +695,6 @@ mod test {
     #[rstest]
     fn inx(mut cpu: CPU) {
         cpu.load(vec![0xe8, 0x00]);
-        cpu.reset();
         cpu.register_x = 10;
         cpu.run();
         assert_eq!(cpu.register_x, 11);
@@ -600,7 +704,6 @@ mod test {
     #[rstest]
     fn inx_zero_flag(mut cpu: CPU) {
         cpu.load(vec![0xe8, 0x00]);
-        cpu.reset();
         cpu.register_x = 0xff;
         cpu.run();
         assert_eq!(cpu.register_x, 0);
@@ -610,7 +713,6 @@ mod test {
     #[rstest]
     fn inx_negative_flag(mut cpu: CPU) {
         cpu.load(vec![0xe8, 0x00]);
-        cpu.reset();
         cpu.register_x = 0xfe;
         cpu.run();
         assert_eq!(cpu.register_x, 0xff);
@@ -620,7 +722,6 @@ mod test {
     #[rstest]
     fn iny(mut cpu: CPU) {
         cpu.load(vec![0xc8, 0x00]);
-        cpu.reset();
         cpu.register_y = 10;
         cpu.run();
         assert_eq!(cpu.register_y, 11);
@@ -630,7 +731,6 @@ mod test {
     #[rstest]
     fn iny_zero_flag(mut cpu: CPU) {
         cpu.load(vec![0xc8, 0x00]);
-        cpu.reset();
         cpu.register_y = 0xff;
         cpu.run();
         assert_eq!(cpu.register_y, 0);
@@ -640,7 +740,6 @@ mod test {
     #[rstest]
     fn iny_negative_flag(mut cpu: CPU) {
         cpu.load(vec![0xc8, 0x00]);
-        cpu.reset();
         cpu.register_y = 0xfe;
         cpu.run();
         assert_eq!(cpu.register_y, 0xff);
