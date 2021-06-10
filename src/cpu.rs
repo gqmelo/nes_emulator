@@ -73,6 +73,9 @@ impl CPU {
 
             match opcode.mnemonic {
                 "BRK" => return,
+                "DEC" => self.dec(&opcode.mode),
+                "DEX" => self.dex(),
+                "DEY" => self.dey(),
                 "INC" => self.inc(&opcode.mode),
                 "INX" => self.inx(),
                 "INY" => self.iny(),
@@ -93,6 +96,40 @@ impl CPU {
 
             self.program_counter += self.get_program_counter_increment(&opcode.mode);
         }
+    }
+
+    fn dec(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let new_value = self.mem_read(addr).wrapping_sub(1);
+        self.mem_write(addr, new_value);
+        self.update_zero_and_negative_flags(new_value);
+    }
+
+    fn dex(&mut self) {
+        self.register_x = self.register_x.wrapping_sub(1);
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn dey(&mut self) {
+        self.register_y = self.register_y.wrapping_sub(1);
+        self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn inc(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let new_value = self.mem_read(addr).wrapping_add(1);
+        self.mem_write(addr, new_value);
+        self.update_zero_and_negative_flags(new_value);
+    }
+
+    fn inx(&mut self) {
+        self.register_x = self.register_x.wrapping_add(1);
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn iny(&mut self) {
+        self.register_y = self.register_y.wrapping_add(1);
+        self.update_zero_and_negative_flags(self.register_y);
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
@@ -159,23 +196,6 @@ impl CPU {
     fn tya(&mut self) {
         self.register_a = self.register_y;
         self.update_zero_and_negative_flags(self.register_a);
-    }
-
-    fn inc(&mut self, mode: &AddressingMode) {
-        let addr = self.get_operand_address(mode);
-        let new_value = self.mem_read(addr).wrapping_add(1);
-        self.mem_write(addr, new_value);
-        self.update_zero_and_negative_flags(new_value);
-    }
-
-    fn inx(&mut self) {
-        self.register_x = self.register_x.wrapping_add(1);
-        self.update_zero_and_negative_flags(self.register_x);
-    }
-
-    fn iny(&mut self) {
-        self.register_y = self.register_y.wrapping_add(1);
-        self.update_zero_and_negative_flags(self.register_y);
     }
 
     fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
@@ -266,6 +286,88 @@ mod test {
     #[fixture]
     fn cpu() -> CPU {
         CPU::new()
+    }
+
+    #[rstest]
+    #[case(vec![0xc6, 0x10, 0x00])] // dec $10
+    #[case(vec![
+        0xa2, 0x02, // ldx #$02
+        0xd6, 0x0e, // dev $0e,X
+        0x00
+    ])]
+    fn dec_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.mem_write(0x10, 5);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x10), 4);
+    }
+
+    #[rstest]
+    #[case(vec![0xce, 0xe4, 0x70, 0x00])] // dec $70e4
+    #[case(vec![
+        0xa2, 0x02, // ldx #$02
+        0xde, 0xe2, 0x70, // dec $70e4,X
+        0x00
+    ])]
+    fn dec_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.mem_write_u16(0x70e4, 5);
+        cpu.run();
+        assert_eq!(cpu.mem_read_u16(0x70e4), 4);
+    }
+
+    #[rstest]
+    fn dex(mut cpu: CPU) {
+        cpu.load(vec![0xca, 0x00]);
+        cpu.register_x = 10;
+        cpu.run();
+        assert_eq!(cpu.register_x, 9);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn dex_zero_flag(mut cpu: CPU) {
+        cpu.load(vec![0xca, 0x00]);
+        cpu.register_x = 0x01;
+        cpu.run();
+        assert_eq!(cpu.register_x, 0);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn dex_negative_flag(mut cpu: CPU) {
+        cpu.load(vec![0xca, 0x00]);
+        cpu.register_x = 0x00;
+        cpu.run();
+        assert_eq!(cpu.register_x, 0xff);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn dey(mut cpu: CPU) {
+        cpu.load(vec![0x88, 0x00]);
+        cpu.register_y = 10;
+        cpu.run();
+        assert_eq!(cpu.register_y, 9);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn dey_zero_flag(mut cpu: CPU) {
+        cpu.load(vec![0x88, 0x00]);
+        cpu.register_y = 0x01;
+        cpu.run();
+        assert_eq!(cpu.register_y, 0);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn dey_negative_flag(mut cpu: CPU) {
+        cpu.load(vec![0x88, 0x00]);
+        cpu.register_y = 0x00;
+        cpu.run();
+        assert_eq!(cpu.register_y, 0xff);
+        assert_eq!(cpu.status, 0b1000_0000);
     }
 
     #[rstest]
@@ -682,7 +784,7 @@ mod test {
     #[case(vec![0xee, 0xe4, 0x70, 0x00])] // inc $70e4
     #[case(vec![
         0xa2, 0x02, // ldx #$02
-        0xfe, 0xe2, 0x70, // // sta $70e4,X
+        0xfe, 0xe2, 0x70, // inc $70e4,X
         0x00
     ])]
     fn inc_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
