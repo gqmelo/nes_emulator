@@ -72,6 +72,7 @@ impl CPU {
                 .expect(&format!("invalid opcode: {:#04x}", code));
 
             match opcode.mnemonic {
+                "AND" => self.and(&opcode.mode),
                 "BRK" => return,
                 "DEC" => self.dec(&opcode.mode),
                 "DEX" => self.dex(),
@@ -96,6 +97,13 @@ impl CPU {
 
             self.program_counter += self.get_program_counter_increment(&opcode.mode);
         }
+    }
+
+    fn and(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.register_a = self.register_a & value;
+        self.update_zero_and_negative_flags(self.register_a);
     }
 
     fn dec(&mut self, mode: &AddressingMode) {
@@ -286,6 +294,89 @@ mod test {
     #[fixture]
     fn cpu() -> CPU {
         CPU::new()
+    }
+
+    #[rstest]
+    #[case(vec![0x29, 0x5e, 0x00])] // and #$5e
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x86, 0x10, // stx $10
+        0x25, 0x10, // and $10
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x86, 0x15, // stx $15
+        0xa2, 0x05, // ldx #$05
+        0x35, 0x10, // and $10,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x8e, 0xe4, 0x70, // stx $70e4
+        0x2d, 0xe4, 0x70, // and $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa2, 0x05, // ldx #$05
+        0x3d, 0xe4, 0x70, // and $70e4,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa0, 0x05, // ldy #$05
+        0x39, 0xe4, 0x70, // lda $70e4,Y
+        0x00
+    ])]
+    fn and(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.register_a = 0x97;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x16);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn and_indirect_x(mut cpu: CPU) {
+        cpu.load(vec![0x21, 0x01, 0x00]);
+        cpu.register_a = 0x97;
+        cpu.register_x = 0x01;
+        cpu.mem_write_u16(0x0002, 0x70e4);
+        cpu.mem_write(0x70e4, 0x5e);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x16);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn and_indirect_y(mut cpu: CPU) {
+        cpu.load(vec![0x31, 0x02, 0x00]);
+        cpu.register_a = 0x97;
+        cpu.register_y = 0x01;
+        cpu.mem_write_u16(0x02, 0x70e4);
+        cpu.mem_write(0x70e5, 0x5e);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x16);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn and_zero_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0x29, 0x5e, 0x00]);
+        assert_eq!(cpu.register_a, 0x00);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn and_negative_flag(mut cpu: CPU) {
+        cpu.load(vec![0x29, 0x9e, 0x00]);
+        cpu.register_a = 0xa5;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x84);
+        assert_eq!(cpu.status, 0b1000_0000);
     }
 
     #[rstest]

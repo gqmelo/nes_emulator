@@ -21,6 +21,16 @@ impl OpCode {
 
 lazy_static! {
     pub static ref CPU_OPS_CODES: Vec<OpCode> = vec![
+        // AND
+        OpCode::new(0x29, "AND", 2, AddressingMode::Immediate),
+        OpCode::new(0x25, "AND", 3, AddressingMode::ZeroPage),
+        OpCode::new(0x35, "AND", 4, AddressingMode::ZeroPageX),
+        OpCode::new(0x2d, "AND", 4, AddressingMode::Absolute),
+        OpCode::new(0x3d, "AND", 4, AddressingMode::AbsoluteX),
+        OpCode::new(0x39, "AND", 4, AddressingMode::AbsoluteY),
+        OpCode::new(0x21, "AND", 6, AddressingMode::IndirectX),
+        OpCode::new(0x31, "AND", 5, AddressingMode::IndirectY),
+        //
         OpCode::new(0x00, "BRK", 1, AddressingMode::NoneAddressing),
         // DEC
         OpCode::new(0xc6, "DEC", 5, AddressingMode::ZeroPage),
