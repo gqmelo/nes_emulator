@@ -40,6 +40,15 @@ lazy_static! {
         //
         OpCode::new(0xca, "DEX", 2, AddressingMode::NoneAddressing),
         OpCode::new(0x88, "DEY", 2, AddressingMode::NoneAddressing),
+        // EOR
+        OpCode::new(0x49, "EOR", 2, AddressingMode::Immediate),
+        OpCode::new(0x45, "EOR", 3, AddressingMode::ZeroPage),
+        OpCode::new(0x55, "EOR", 4, AddressingMode::ZeroPageX),
+        OpCode::new(0x4d, "EOR", 4, AddressingMode::Absolute),
+        OpCode::new(0x5d, "EOR", 4, AddressingMode::AbsoluteX),
+        OpCode::new(0x59, "EOR", 4, AddressingMode::AbsoluteY),
+        OpCode::new(0x41, "EOR", 6, AddressingMode::IndirectX),
+        OpCode::new(0x51, "EOR", 5, AddressingMode::IndirectY),
         // INC
         OpCode::new(0xe6, "INC", 5, AddressingMode::ZeroPage),
         OpCode::new(0xf6, "INC", 6, AddressingMode::ZeroPageX),
