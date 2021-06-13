@@ -73,6 +73,7 @@ impl CPU {
 
             match opcode.mnemonic {
                 "AND" => self.and(&opcode.mode),
+                "BIT" => self.bit(&opcode.mode),
                 "BRK" => return,
                 "DEC" => self.dec(&opcode.mode),
                 "DEX" => self.dex(),
@@ -106,6 +107,18 @@ impl CPU {
         let value = self.mem_read(addr);
         self.register_a = self.register_a & value;
         self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn bit(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        if self.register_a & value > 0 {
+            self.status &= 0b1111_1101
+        } else {
+            self.status |= 0b0000_0010
+        };
+
+        self.status |= value & 0b1100_0000
     }
 
     fn dec(&mut self, mode: &AddressingMode) {
@@ -289,15 +302,15 @@ impl CPU {
 
     fn update_zero_and_negative_flags(&mut self, result: u8) {
         if result == 0 {
-            self.status = self.status | 0b0000_0010;
+            self.status |= 0b0000_0010;
         } else {
-            self.status = self.status & 0b1111_1101;
+            self.status &= 0b1111_1101;
         }
 
         if result & 0b1000_0000 != 0 {
-            self.status = self.status | 0b1000_0000;
+            self.status |= 0b1000_0000;
         } else {
-            self.status = self.status & 0b0111_1111;
+            self.status &= 0b0111_1111;
         }
     }
 }
@@ -352,7 +365,7 @@ mod test {
         cpu.register_a = 0x97;
         cpu.run();
         assert_eq!(cpu.register_a, 0x16);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -364,7 +377,7 @@ mod test {
         cpu.mem_write(0x70e4, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x16);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -376,7 +389,7 @@ mod test {
         cpu.mem_write(0x70e5, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x16);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -396,10 +409,62 @@ mod test {
     }
 
     #[rstest]
+    #[case(0x80, 0xca, 0b1100_0000)]
+    #[case(0x40, 0xca, 0b1100_0000)]
+    #[case(0x20, 0xca, 0b1100_0010)]
+    #[case(0x10, 0xca, 0b1100_0010)]
+    #[case(0x08, 0xca, 0b1100_0000)]
+    #[case(0x04, 0xca, 0b1100_0010)]
+    #[case(0x02, 0xca, 0b1100_0000)]
+    #[case(0x01, 0xca, 0b1100_0010)]
+    #[case(0x01, 0x8a, 0b1000_0010)]
+    #[case(0x01, 0x4a, 0b0100_0010)]
+    #[case(0x01, 0x3a, 0b0000_0010)]
+    fn bit_zero_page(
+        mut cpu: CPU,
+        #[case] register_a: u8,
+        #[case] memory_value: u8,
+        #[case] expected_status: u8,
+    ) {
+        cpu.load(vec![0x24, 0x02, 0x00]);
+        cpu.mem_write(0x02, memory_value);
+        cpu.register_a = register_a;
+        cpu.run();
+        assert_eq!(cpu.register_a, register_a);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    #[case(0x80, 0xca, 0b1100_0000)]
+    #[case(0x40, 0xca, 0b1100_0000)]
+    #[case(0x20, 0xca, 0b1100_0010)]
+    #[case(0x10, 0xca, 0b1100_0010)]
+    #[case(0x08, 0xca, 0b1100_0000)]
+    #[case(0x04, 0xca, 0b1100_0010)]
+    #[case(0x02, 0xca, 0b1100_0000)]
+    #[case(0x01, 0xca, 0b1100_0010)]
+    #[case(0x01, 0x8a, 0b1000_0010)]
+    #[case(0x01, 0x4a, 0b0100_0010)]
+    #[case(0x01, 0x3a, 0b0000_0010)]
+    fn bit_absolute(
+        mut cpu: CPU,
+        #[case] register_a: u8,
+        #[case] memory_value: u8,
+        #[case] expected_status: u8,
+    ) {
+        cpu.load(vec![0x2c, 0xe2, 0x70, 0x00]);
+        cpu.mem_write(0x70e2, memory_value);
+        cpu.register_a = register_a;
+        cpu.run();
+        assert_eq!(cpu.register_a, register_a);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
     #[case(vec![0xc6, 0x10, 0x00])] // dec $10
     #[case(vec![
         0xa2, 0x02, // ldx #$02
-        0xd6, 0x0e, // dev $0e,X
+        0xd6, 0x0e, // dec $0e,X
         0x00
     ])]
     fn dec_zero_page(mut cpu: CPU, #[case] program: Vec<u8>) {
@@ -413,12 +478,12 @@ mod test {
     #[case(vec![0xce, 0xe4, 0x70, 0x00])] // dec $70e4
     #[case(vec![
         0xa2, 0x02, // ldx #$02
-        0xde, 0xe2, 0x70, // dec $70e4,X
+        0xde, 0xe2, 0x70, // dec $70e2,X
         0x00
     ])]
     fn dec_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.mem_write_u16(0x70e4, 5);
+        cpu.mem_write(0x70e4, 5);
         cpu.run();
         assert_eq!(cpu.mem_read_u16(0x70e4), 4);
     }
@@ -429,7 +494,7 @@ mod test {
         cpu.register_x = 10;
         cpu.run();
         assert_eq!(cpu.register_x, 9);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -456,7 +521,7 @@ mod test {
         cpu.register_y = 10;
         cpu.run();
         assert_eq!(cpu.register_y, 9);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -517,7 +582,7 @@ mod test {
         cpu.register_a = 0x67;
         cpu.run();
         assert_eq!(cpu.register_a, 0x39);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -529,7 +594,7 @@ mod test {
         cpu.mem_write(0x70e4, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x39);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -541,7 +606,7 @@ mod test {
         cpu.mem_write(0x70e5, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x39);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -597,7 +662,7 @@ mod test {
     fn lda(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load_and_run(program);
         assert_eq!(cpu.register_a, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -608,7 +673,7 @@ mod test {
         cpu.mem_write(0x70e4, 0x05);
         cpu.run();
         assert_eq!(cpu.register_a, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -619,7 +684,7 @@ mod test {
         cpu.mem_write(0x70e5, 0x05);
         cpu.run();
         assert_eq!(cpu.register_a, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -664,7 +729,7 @@ mod test {
     fn ldx(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load_and_run(program);
         assert_eq!(cpu.register_x, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -709,7 +774,7 @@ mod test {
     fn ldy(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load_and_run(program);
         assert_eq!(cpu.register_y, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -765,7 +830,7 @@ mod test {
         cpu.register_a = 0x67;
         cpu.run();
         assert_eq!(cpu.register_a, 0x7f);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -777,7 +842,7 @@ mod test {
         cpu.mem_write(0x70e4, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x7f);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -789,7 +854,7 @@ mod test {
         cpu.mem_write(0x70e5, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x7f);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -850,7 +915,7 @@ mod test {
         cpu.run();
 
         assert_eq!(cpu.mem_read_u16(0x70e4), 5);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -862,7 +927,7 @@ mod test {
         cpu.run();
 
         assert_eq!(cpu.mem_read_u16(0x70e4), 5);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -913,7 +978,7 @@ mod test {
     fn tax(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa9, 0x05, 0xaa, 0x00]);
         assert_eq!(cpu.register_x, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -934,7 +999,7 @@ mod test {
     fn tay(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa9, 0x05, 0xa8, 0x00]);
         assert_eq!(cpu.register_y, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -957,7 +1022,7 @@ mod test {
         cpu.register_s = 5;
         cpu.run();
         assert_eq!(cpu.register_x, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -982,7 +1047,7 @@ mod test {
     fn txa(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa2, 0x05, 0x8a, 0x00]);
         assert_eq!(cpu.register_a, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -1003,7 +1068,7 @@ mod test {
     fn txs(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa2, 0x05, 0x9a, 0x00]);
         assert_eq!(cpu.register_s, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -1024,7 +1089,7 @@ mod test {
     fn tya(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa0, 0x05, 0x98, 0x00]);
         assert_eq!(cpu.register_a, 0x05);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -1064,7 +1129,7 @@ mod test {
     ])]
     fn inc_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.mem_write_u16(0x70e4, 5);
+        cpu.mem_write(0x70e4, 5);
         cpu.run();
         assert_eq!(cpu.mem_read_u16(0x70e4), 6);
     }
@@ -1075,7 +1140,7 @@ mod test {
         cpu.register_x = 10;
         cpu.run();
         assert_eq!(cpu.register_x, 11);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
@@ -1102,7 +1167,7 @@ mod test {
         cpu.register_y = 10;
         cpu.run();
         assert_eq!(cpu.register_y, 11);
-        assert_eq!(cpu.status, 0x0000_0000);
+        assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]

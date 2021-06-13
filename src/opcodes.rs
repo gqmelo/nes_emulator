@@ -30,6 +30,9 @@ lazy_static! {
         OpCode::new(0x39, "AND", 4, AddressingMode::AbsoluteY),
         OpCode::new(0x21, "AND", 6, AddressingMode::IndirectX),
         OpCode::new(0x31, "AND", 5, AddressingMode::IndirectY),
+        // BIT
+        OpCode::new(0x24, "BIT", 3, AddressingMode::ZeroPage),
+        OpCode::new(0x2c, "BIT", 4, AddressingMode::Absolute),
         //
         OpCode::new(0x00, "BRK", 1, AddressingMode::NoneAddressing),
         // DEC
