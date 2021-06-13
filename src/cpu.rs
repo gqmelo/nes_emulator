@@ -84,6 +84,7 @@ impl CPU {
                 "LDA" => self.lda(&opcode.mode),
                 "LDX" => self.ldx(&opcode.mode),
                 "LDY" => self.ldy(&opcode.mode),
+                "ORA" => self.ora(&opcode.mode),
                 "STA" => self.sta(&opcode.mode),
                 "STX" => self.stx(&opcode.mode),
                 "STY" => self.sty(&opcode.mode),
@@ -167,6 +168,13 @@ impl CPU {
         let value = self.mem_read(addr);
         self.register_y = value;
         self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn ora(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.register_a = self.register_a | value;
+        self.update_zero_and_negative_flags(self.register_a);
     }
 
     fn sta(&mut self, mode: &AddressingMode) {
@@ -714,6 +722,89 @@ mod test {
     fn ldy_negative_flag(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa0, 0xf0, 0x00]);
         assert_eq!(cpu.register_y, 0xf0);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    #[case(vec![0x09, 0x5e, 0x00])] // ora #$5e
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x86, 0x10, // stx $10
+        0x05, 0x10, // ora $10
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x86, 0x15, // stx $15
+        0xa2, 0x05, // ldx #$05
+        0x15, 0x10, // ora $10,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x8e, 0xe4, 0x70, // stx $70e4
+        0x0d, 0xe4, 0x70, // ora $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa2, 0x05, // ldx #$05
+        0x1d, 0xe4, 0x70, // ora $70e4,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa2, 0x5e, // ldx #$5e
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa0, 0x05, // ldy #$05
+        0x19, 0xe4, 0x70, // ora $70e4,Y
+        0x00
+    ])]
+    fn ora(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.register_a = 0x67;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x7f);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn ora_indirect_x(mut cpu: CPU) {
+        cpu.load(vec![0x01, 0x01, 0x00]);
+        cpu.register_a = 0x67;
+        cpu.register_x = 0x01;
+        cpu.mem_write_u16(0x0002, 0x70e4);
+        cpu.mem_write(0x70e4, 0x5e);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x7f);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn ora_indirect_y(mut cpu: CPU) {
+        cpu.load(vec![0x11, 0x02, 0x00]);
+        cpu.register_a = 0x67;
+        cpu.register_y = 0x01;
+        cpu.mem_write_u16(0x02, 0x70e4);
+        cpu.mem_write(0x70e5, 0x5e);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x7f);
+        assert_eq!(cpu.status, 0x0000_0000);
+    }
+
+    #[rstest]
+    fn ora_zero_flag(mut cpu: CPU) {
+        cpu.load_and_run(vec![0x09, 0x00, 0x00]);
+        assert_eq!(cpu.register_a, 0x00);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn ora_negative_flag(mut cpu: CPU) {
+        cpu.load(vec![0x09, 0x9e, 0x00]);
+        cpu.register_a = 0x15;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x9f);
         assert_eq!(cpu.status, 0b1000_0000);
     }
 
