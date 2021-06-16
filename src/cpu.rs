@@ -14,6 +14,16 @@ pub enum AddressingMode {
     NoneAddressing,
 }
 
+#[derive(Debug)]
+pub enum StatusFlag {
+    Carry = 0,
+    Zero = 1,
+    InterruptDisable = 2,
+    Decimal = 3,
+    Overflow = 6,
+    Negative = 7,
+}
+
 pub struct CPU {
     pub register_a: u8,
     pub register_x: u8,
@@ -75,6 +85,10 @@ impl CPU {
                 "AND" => self.and(&opcode.mode),
                 "BIT" => self.bit(&opcode.mode),
                 "BRK" => return,
+                "CLC" => self.clear_status_flag(StatusFlag::Carry),
+                "CLD" => self.clear_status_flag(StatusFlag::Decimal),
+                "CLI" => self.clear_status_flag(StatusFlag::InterruptDisable),
+                "CLV" => self.clear_status_flag(StatusFlag::Overflow),
                 "DEC" => self.dec(&opcode.mode),
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
@@ -119,6 +133,11 @@ impl CPU {
         };
 
         self.status |= value & 0b1100_0000
+    }
+
+    fn clear_status_flag(&mut self, status_flag: StatusFlag) {
+        let mask = 0b1111_1111 ^ (0b0000_0001 << status_flag as u8);
+        self.status &= mask;
     }
 
     fn dec(&mut self, mode: &AddressingMode) {
@@ -406,6 +425,39 @@ mod test {
         cpu.run();
         assert_eq!(cpu.register_a, 0x84);
         assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    #[case(0x18, 0b1111_1111, 0b1111_1110)] // clc
+    #[case(0x18, 0b0000_1111, 0b0000_1110)] // clc
+    #[case(0x18, 0b1111_0000, 0b1111_0000)] // clc
+    #[case(0x18, 0b0000_0000, 0b0000_0000)] // clc
+    #[case(0x58, 0b1111_1111, 0b1111_1011)] // cli
+    #[case(0x58, 0b0000_1111, 0b0000_1011)] // cli
+    #[case(0x58, 0b1111_0000, 0b1111_0000)] // cli
+    #[case(0x58, 0b0000_0000, 0b0000_0000)] // cli
+    #[case(0xd8, 0b1111_1111, 0b1111_0111)] // cld
+    #[case(0xd8, 0b0000_1111, 0b0000_0111)] // cld
+    #[case(0xd8, 0b1111_0000, 0b1111_0000)] // cld
+    #[case(0xd8, 0b0000_0000, 0b0000_0000)] // cld
+    #[case(0xb8, 0b1111_1111, 0b1011_1111)] // clv
+    #[case(0xb8, 0b0000_1111, 0b0000_1111)] // clv
+    #[case(0xb8, 0b1111_0000, 0b1011_0000)] // clv
+    #[case(0xb8, 0b0000_0000, 0b0000_0000)] // clv
+    fn clear_status_flags(
+        mut cpu: CPU,
+        #[case] instruction: u8,
+        #[case] initial_status: u8,
+        #[case] expected_status: u8,
+    ) {
+        cpu.load(vec![instruction, 0x00]);
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(
+            cpu.status, expected_status,
+            "status register {:#08b} not as expected {:#08b}",
+            cpu.status, expected_status
+        );
     }
 
     #[rstest]

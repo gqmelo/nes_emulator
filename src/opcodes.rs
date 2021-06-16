@@ -35,6 +35,11 @@ lazy_static! {
         OpCode::new(0x2c, "BIT", 4, AddressingMode::Absolute),
         //
         OpCode::new(0x00, "BRK", 1, AddressingMode::NoneAddressing),
+        // CL*
+        OpCode::new(0x18, "CLC", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xd8, "CLD", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x58, "CLI", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xb8, "CLV", 2, AddressingMode::NoneAddressing),
         // DEC
         OpCode::new(0xc6, "DEC", 5, AddressingMode::ZeroPage),
         OpCode::new(0xd6, "DEC", 6, AddressingMode::ZeroPageX),
