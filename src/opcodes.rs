@@ -95,6 +95,10 @@ lazy_static! {
         OpCode::new(0x19, "ORA", 4, AddressingMode::AbsoluteY),
         OpCode::new(0x01, "ORA", 6, AddressingMode::IndirectX),
         OpCode::new(0x11, "ORA", 5, AddressingMode::IndirectY),
+        // S*
+        OpCode::new(0x38, "SEC", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0xf8, "SED", 2, AddressingMode::NoneAddressing),
+        OpCode::new(0x78, "SEI", 2, AddressingMode::NoneAddressing),
         // STA
         OpCode::new(0x85, "STA", 3, AddressingMode::ZeroPage),
         OpCode::new(0x95, "STA", 4, AddressingMode::ZeroPageX),

@@ -100,6 +100,9 @@ impl CPU {
                 "LDX" => self.ldx(&opcode.mode),
                 "LDY" => self.ldy(&opcode.mode),
                 "ORA" => self.ora(&opcode.mode),
+                "SEC" => self.set_status_flag(StatusFlag::Carry),
+                "SED" => self.set_status_flag(StatusFlag::Decimal),
+                "SEI" => self.set_status_flag(StatusFlag::InterruptDisable),
                 "STA" => self.sta(&opcode.mode),
                 "STX" => self.stx(&opcode.mode),
                 "STY" => self.sty(&opcode.mode),
@@ -138,6 +141,11 @@ impl CPU {
     fn clear_status_flag(&mut self, status_flag: StatusFlag) {
         let mask = 0b1111_1111 ^ (0b0000_0001 << status_flag as u8);
         self.status &= mask;
+    }
+
+    fn set_status_flag(&mut self, status_flag: StatusFlag) {
+        let mask = 0b0000_0001 << status_flag as u8;
+        self.status |= mask;
     }
 
     fn dec(&mut self, mode: &AddressingMode) {
@@ -432,19 +440,31 @@ mod test {
     #[case(0x18, 0b0000_1111, 0b0000_1110)] // clc
     #[case(0x18, 0b1111_0000, 0b1111_0000)] // clc
     #[case(0x18, 0b0000_0000, 0b0000_0000)] // clc
-    #[case(0x58, 0b1111_1111, 0b1111_1011)] // cli
-    #[case(0x58, 0b0000_1111, 0b0000_1011)] // cli
-    #[case(0x58, 0b1111_0000, 0b1111_0000)] // cli
-    #[case(0x58, 0b0000_0000, 0b0000_0000)] // cli
     #[case(0xd8, 0b1111_1111, 0b1111_0111)] // cld
     #[case(0xd8, 0b0000_1111, 0b0000_0111)] // cld
     #[case(0xd8, 0b1111_0000, 0b1111_0000)] // cld
     #[case(0xd8, 0b0000_0000, 0b0000_0000)] // cld
+    #[case(0x58, 0b1111_1111, 0b1111_1011)] // cli
+    #[case(0x58, 0b0000_1111, 0b0000_1011)] // cli
+    #[case(0x58, 0b1111_0000, 0b1111_0000)] // cli
+    #[case(0x58, 0b0000_0000, 0b0000_0000)] // cli
     #[case(0xb8, 0b1111_1111, 0b1011_1111)] // clv
     #[case(0xb8, 0b0000_1111, 0b0000_1111)] // clv
     #[case(0xb8, 0b1111_0000, 0b1011_0000)] // clv
     #[case(0xb8, 0b0000_0000, 0b0000_0000)] // clv
-    fn clear_status_flags(
+    #[case(0x38, 0b1111_1111, 0b1111_1111)] // sec
+    #[case(0x38, 0b0000_1111, 0b0000_1111)] // sec
+    #[case(0x38, 0b1111_0000, 0b1111_0001)] // sec
+    #[case(0x38, 0b0000_0000, 0b0000_0001)] // sec
+    #[case(0xf8, 0b1111_1111, 0b1111_1111)] // sed
+    #[case(0xf8, 0b0000_1111, 0b0000_1111)] // sed
+    #[case(0xf8, 0b1111_0000, 0b1111_1000)] // sed
+    #[case(0xf8, 0b0000_0000, 0b0000_1000)] // sed
+    #[case(0x78, 0b1111_1111, 0b1111_1111)] // sei
+    #[case(0x78, 0b0000_1111, 0b0000_1111)] // sei
+    #[case(0x78, 0b1111_0000, 0b1111_0100)] // sei
+    #[case(0x78, 0b0000_0000, 0b0000_0100)] // sei
+    fn clear_set_status_flags(
         mut cpu: CPU,
         #[case] instruction: u8,
         #[case] initial_status: u8,
