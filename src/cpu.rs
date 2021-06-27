@@ -9,6 +9,7 @@ pub enum AddressingMode {
     Absolute,
     AbsoluteX,
     AbsoluteY,
+    Indirect,
     IndirectX,
     IndirectY,
     NoneAddressing,
@@ -70,21 +71,37 @@ impl CPU {
     pub fn run(&mut self) {
         let ref opcodes = *opcodes::OPCODES_MAP;
         loop {
-            println!(
-                "a: {:#04x}; x: {:#04x}; y: {:#04x}",
-                self.register_a, self.register_x, self.register_y
-            );
             let code = self.mem_read(self.program_counter);
-            self.program_counter += 1;
 
             let opcode = opcodes
                 .get(&code)
                 .expect(&format!("invalid opcode: {:#04x}", code));
 
+            println!(
+                "pc: {:#06x}, instr: {} ({:#04x}), a: {:#04x}; x: {:#04x}; y: {:#04x}, status: {:#010b}",
+                self.program_counter,
+                opcode.mnemonic,
+                code,
+                self.register_a,
+                self.register_x,
+                self.register_y,
+                self.status
+            );
+
+            self.program_counter += 1;
+
             match opcode.mnemonic {
                 "AND" => self.and(&opcode.mode),
+                "BCC" => self.branch_status_flag_clear(StatusFlag::Carry),
+                "BCS" => self.branch_status_flag_set(StatusFlag::Carry),
+                "BEQ" => self.branch_status_flag_set(StatusFlag::Zero),
                 "BIT" => self.bit(&opcode.mode),
+                "BMI" => self.branch_status_flag_set(StatusFlag::Negative),
+                "BNE" => self.branch_status_flag_clear(StatusFlag::Zero),
+                "BPL" => self.branch_status_flag_clear(StatusFlag::Negative),
                 "BRK" => return,
+                "BVC" => self.branch_status_flag_clear(StatusFlag::Overflow),
+                "BVS" => self.branch_status_flag_set(StatusFlag::Overflow),
                 "CLC" => self.clear_status_flag(StatusFlag::Carry),
                 "CLD" => self.clear_status_flag(StatusFlag::Decimal),
                 "CLI" => self.clear_status_flag(StatusFlag::InterruptDisable),
@@ -96,6 +113,7 @@ impl CPU {
                 "INC" => self.inc(&opcode.mode),
                 "INX" => self.inx(),
                 "INY" => self.iny(),
+                "JMP" => self.jmp(&opcode.mode),
                 "LDA" => self.lda(&opcode.mode),
                 "LDX" => self.ldx(&opcode.mode),
                 "LDY" => self.ldy(&opcode.mode),
@@ -115,7 +133,10 @@ impl CPU {
                 _ => todo!("{:#04x}", code),
             };
 
-            self.program_counter += self.get_program_counter_increment(&opcode.mode);
+            match opcode.mnemonic {
+                "JMP" => {}
+                _ => self.program_counter += self.get_program_counter_increment(&opcode.mode),
+            };
         }
     }
 
@@ -124,6 +145,34 @@ impl CPU {
         let value = self.mem_read(addr);
         self.register_a = self.register_a & value;
         self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn branch_status_flag_clear(&mut self, status_flag: StatusFlag) {
+        let addr = self.get_operand_address(&AddressingMode::Immediate);
+        let value = self.mem_read(addr);
+        let mask = 0b0000_0001 << status_flag as u8;
+        if self.status & mask == 0 {
+            if value > 0xf0 {
+                let offset = 0xff - value;
+                self.program_counter -= offset as u16;
+            } else {
+                self.program_counter += value as u16;
+            }
+        }
+    }
+
+    fn branch_status_flag_set(&mut self, status_flag: StatusFlag) {
+        let addr = self.get_operand_address(&AddressingMode::Immediate);
+        let value = self.mem_read(addr);
+        let mask = 0b0000_0001 << status_flag as u8;
+        if self.status & mask != 0 {
+            if value > 0xf0 {
+                let offset = 0xff - value;
+                self.program_counter -= offset as u16;
+            } else {
+                self.program_counter += value as u16;
+            }
+        }
     }
 
     fn bit(&mut self, mode: &AddressingMode) {
@@ -187,6 +236,11 @@ impl CPU {
     fn iny(&mut self) {
         self.register_y = self.register_y.wrapping_add(1);
         self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn jmp(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.program_counter = addr;
     }
 
     fn lda(&mut self, mode: &AddressingMode) {
@@ -281,6 +335,10 @@ impl CPU {
             AddressingMode::AbsoluteY => self
                 .mem_read_u16(self.program_counter)
                 .wrapping_add(self.register_y.into()),
+            AddressingMode::Indirect => {
+                let ptr = self.mem_read_u16(self.program_counter);
+                self.mem_read_u16(ptr.into())
+            }
             AddressingMode::IndirectX => {
                 let ptr = self
                     .mem_read(self.program_counter)
@@ -307,7 +365,10 @@ impl CPU {
             | AddressingMode::ZeroPageY
             | AddressingMode::IndirectX
             | AddressingMode::IndirectY => 1,
-            AddressingMode::Absolute | AddressingMode::AbsoluteX | AddressingMode::AbsoluteY => 2,
+            AddressingMode::Absolute
+            | AddressingMode::AbsoluteX
+            | AddressingMode::AbsoluteY
+            | AddressingMode::Indirect => 2,
         }
     }
 
@@ -530,6 +591,139 @@ mod test {
         cpu.run();
         assert_eq!(cpu.register_a, register_a);
         assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    #[case(0x90, 0b1111_1110)] // bcc
+    #[case(0x90, 0b0000_0000)] // bcc
+    #[case(0xb0, 0b1111_1111)] // bcs
+    #[case(0xb0, 0b0000_0001)] // bcs
+    #[case(0xf0, 0b1111_1111)] // beq
+    #[case(0xf0, 0b0000_0010)] // beq
+    #[case(0x30, 0b1111_1111)] // bmi
+    #[case(0x30, 0b1000_0000)] // bmi
+    #[case(0xd0, 0b1111_1101)] // bne
+    #[case(0xd0, 0b0000_0000)] // bne
+    #[case(0x10, 0b0111_1111)] // bpl
+    #[case(0x10, 0b0000_0000)] // bpl
+    #[case(0x50, 0b1011_1111)] // bvc
+    #[case(0x50, 0b0000_0000)] // bvc
+    #[case(0x70, 0b1111_1111)] // bvs
+    #[case(0x70, 0b0100_0000)] // bvs
+    fn branch_forward(mut cpu: CPU, #[case] branch_instruction: u8, #[case] initial_status: u8) {
+        #[rustfmt::skip]
+        let program = vec![
+            branch_instruction, 0x02,
+            0xe8, // inx
+            0xe8, // inx
+            0xe8, // inx
+            0x00,
+        ];
+        cpu.load(program);
+        cpu.status = initial_status;
+        cpu.register_x = 0x05;
+        cpu.run();
+        assert_eq!(cpu.register_x, 0x06);
+    }
+
+    #[rstest]
+    #[case(0x90, 0b1111_1110)] // bcc
+    #[case(0x90, 0b0000_0000)] // bcc
+    #[case(0xb0, 0b1111_1111)] // bcs
+    #[case(0xb0, 0b0000_0001)] // bcs
+    #[case(0xf0, 0b1111_1111)] // beq
+    #[case(0xf0, 0b0000_0010)] // beq
+    #[case(0x30, 0b1111_1111)] // bmi
+    #[case(0x30, 0b1000_0000)] // bmi
+    #[case(0xd0, 0b1111_1101)] // bne
+    #[case(0xd0, 0b0000_0000)] // bne
+    #[case(0x10, 0b0111_1111)] // bpl
+    #[case(0x10, 0b0000_0000)] // bpl
+    #[case(0x50, 0b1011_1111)] // bvc
+    #[case(0x50, 0b0000_0000)] // bvc
+    #[case(0x70, 0b1111_1111)] // bvs
+    #[case(0x70, 0b0100_0000)] // bvs
+    fn branch_backward(mut cpu: CPU, #[case] branch_instruction: u8, #[case] initial_status: u8) {
+        #[rustfmt::skip]
+        let program = vec![
+            0x4c, 0x09, 0x80, // jmp $8009
+            0xe8, // inx
+            0xe8, // inx
+            0xe8, // inx
+            0x4c, 0x0b, 0x80, // jmp $800b
+            branch_instruction, 0xf7, // Goes back 8 bytes (6 bytes before instruction addr)
+            0x00,
+        ];
+        cpu.load(program);
+        cpu.status = initial_status;
+        cpu.register_x = 0x05;
+        cpu.run();
+        assert_eq!(cpu.register_x, 0x08);
+    }
+
+    #[rstest]
+    #[case(0x90, 0b1111_1111)] // bcc
+    #[case(0x90, 0b0000_0001)] // bcc
+    #[case(0xb0, 0b1111_1110)] // bcs
+    #[case(0xb0, 0b0000_0000)] // bcs
+    #[case(0xf0, 0b1111_1101)] // beq
+    #[case(0xf0, 0b0000_0000)] // beq
+    #[case(0x30, 0b0111_1111)] // bmi
+    #[case(0x30, 0b0000_0000)] // bmi
+    #[case(0xd0, 0b1111_1111)] // bne
+    #[case(0xd0, 0b0000_0010)] // bne
+    #[case(0x10, 0b1111_1111)] // bpl
+    #[case(0x10, 0b1000_0000)] // bpl
+    #[case(0x50, 0b1111_1111)] // bvc
+    #[case(0x50, 0b0100_0000)] // bvc
+    #[case(0x70, 0b1011_1111)] // bvs
+    #[case(0x70, 0b0000_0000)] // bvs
+    fn branch_not_taken(mut cpu: CPU, #[case] branch_instruction: u8, #[case] initial_status: u8) {
+        #[rustfmt::skip]
+        let program = vec![
+            branch_instruction, 0x02,
+            0xe8, // inx
+            0xe8, // inx
+            0xe8, // inx
+            0x00,
+        ];
+        cpu.load(program);
+        cpu.status = initial_status;
+        cpu.register_x = 0x05;
+        cpu.run();
+        assert_eq!(cpu.register_x, 0x08);
+    }
+
+    #[rstest]
+    fn jmp_absolute(mut cpu: CPU) {
+        #[rustfmt::skip]
+        let program = vec![
+            0xa2, 0x05, // ldx #$05
+            0x4c, 0x07, 0x80, // jmp $8007
+            0xe8, // inx
+            0xe8, // inx
+            0xe8, // inx
+            0x00,
+        ];
+        cpu.load_and_run(program);
+        assert_eq!(cpu.register_x, 0x06);
+    }
+
+    #[rstest]
+    fn jmp_indirect(mut cpu: CPU) {
+        #[rustfmt::skip]
+        let program = vec![
+            0xa2, 0x05, // ldx #$05
+            0x6c, 0xe4, 0x70, // jmp ($70e4)
+            0xe8, // inx
+            0xe8, // inx
+            0xe8, // inx
+            0x00,
+        ];
+        cpu.load(program);
+        cpu.mem_write_u16(0x70e4, 0x8007);
+        cpu.run();
+        assert_eq!(cpu.register_x, 0x06);
     }
 
     #[rstest]

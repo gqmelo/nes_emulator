@@ -30,11 +30,22 @@ lazy_static! {
         OpCode::new(0x39, "AND", 4, AddressingMode::AbsoluteY),
         OpCode::new(0x21, "AND", 6, AddressingMode::IndirectX),
         OpCode::new(0x31, "AND", 5, AddressingMode::IndirectY),
+        // Branches
+        OpCode::new(0x90, "BCC", 2, AddressingMode::Immediate),
+        OpCode::new(0xb0, "BCS", 2, AddressingMode::Immediate),
+        OpCode::new(0xf0, "BEQ", 2, AddressingMode::Immediate),
         // BIT
         OpCode::new(0x24, "BIT", 3, AddressingMode::ZeroPage),
         OpCode::new(0x2c, "BIT", 4, AddressingMode::Absolute),
+        // Branches
+        OpCode::new(0x30, "BMI", 2, AddressingMode::Immediate),
+        OpCode::new(0xd0, "BNE", 2, AddressingMode::Immediate),
+        OpCode::new(0x10, "BPL", 2, AddressingMode::Immediate),
         //
         OpCode::new(0x00, "BRK", 1, AddressingMode::NoneAddressing),
+        // Branches
+        OpCode::new(0x50, "BVC", 2, AddressingMode::Immediate),
+        OpCode::new(0x70, "BVS", 2, AddressingMode::Immediate),
         // CL*
         OpCode::new(0x18, "CLC", 2, AddressingMode::NoneAddressing),
         OpCode::new(0xd8, "CLD", 2, AddressingMode::NoneAddressing),
@@ -65,6 +76,9 @@ lazy_static! {
         //
         OpCode::new(0xe8, "INX", 2, AddressingMode::NoneAddressing),
         OpCode::new(0xc8, "INY", 2, AddressingMode::NoneAddressing),
+        // JMP
+        OpCode::new(0x4c, "JMP", 3, AddressingMode::Absolute),
+        OpCode::new(0x6c, "JMP", 3, AddressingMode::Indirect),
         // LDA
         OpCode::new(0xa9, "LDA", 2, AddressingMode::Immediate),
         OpCode::new(0xa5, "LDA", 3, AddressingMode::ZeroPage),
