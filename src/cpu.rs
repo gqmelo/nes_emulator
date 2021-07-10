@@ -108,7 +108,7 @@ impl CPU {
                 "CLD" => self.clear_status_flag(StatusFlag::Decimal),
                 "CLI" => self.clear_status_flag(StatusFlag::InterruptDisable),
                 "CLV" => self.clear_status_flag(StatusFlag::Overflow),
-                // "CMP" => self.cmp(&opcode.mode),
+                "CMP" => self.cmp(&opcode.mode),
                 // "CPX" => self.cpx(&opcode.mode),
                 // "CPY" => self.cpy(&opcode.mode),
                 "DEC" => self.dec(&opcode.mode),
@@ -212,6 +212,29 @@ impl CPU {
     fn set_status_flag(&mut self, status_flag: StatusFlag) {
         let mask = 0b0000_0001 << status_flag as u8;
         self.status |= mask;
+    }
+
+    fn cmp(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+
+        if self.register_a == value {
+            self.set_status_flag(StatusFlag::Zero);
+        } else {
+            self.clear_status_flag(StatusFlag::Zero);
+        }
+
+        if self.register_a >= value {
+            self.set_status_flag(StatusFlag::Carry);
+        } else {
+            self.clear_status_flag(StatusFlag::Carry);
+        }
+
+        if self.register_a & 0b1000_0000 != 0 {
+            self.set_status_flag(StatusFlag::Negative)
+        } else {
+            self.clear_status_flag(StatusFlag::Negative);
+        }
     }
 
     fn dec(&mut self, mode: &AddressingMode) {
@@ -407,15 +430,15 @@ impl CPU {
 
     fn update_zero_and_negative_flags(&mut self, result: u8) {
         if result == 0 {
-            self.status |= 0b0000_0010;
+            self.set_status_flag(StatusFlag::Zero)
         } else {
-            self.status &= 0b1111_1101;
+            self.clear_status_flag(StatusFlag::Zero)
         }
 
         if result & 0b1000_0000 != 0 {
-            self.status |= 0b1000_0000;
+            self.set_status_flag(StatusFlag::Negative)
         } else {
-            self.status &= 0b0111_1111;
+            self.clear_status_flag(StatusFlag::Negative)
         }
     }
 }
@@ -741,6 +764,131 @@ mod test {
         cpu.mem_write_u16(0x70e4, 0x8007);
         cpu.run();
         assert_eq!(cpu.register_x, 0x06);
+    }
+
+    #[rstest]
+    #[case(vec![
+        0xa9, 0x05,  // lda #$05
+        0xc9, 0xff, // cmp #$ff (placeholder)
+        0x00
+    ])]
+    #[case(vec![
+        0x85, 0x10, // sta $10
+        0xa9, 0x05,  // lda #$05
+        0xc5, 0x10, // cmp $10
+        0x00
+    ])]
+    #[case(vec![
+        0x85, 0x10, // sta $10
+        0xa9, 0x05,  // lda #$05
+        0xa2, 0x02, // ldx #$02
+        0xd5, 0x0e, // cmp $0e,X
+        0x00
+    ])]
+    #[case(vec![
+        0x8d, 0xe4, 0x70, // sta $70e4
+        0xa9, 0x05,  // lda #$05
+        0xcd, 0xe4, 0x70, // cmp $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0x8d, 0xe9, 0x70, // sta $70e9
+        0xa9, 0x05,  // lda #$05
+        0xa2, 0x05, // ldx #$05
+        0xdd, 0xe4, 0x70, // cmp $70e4,X
+        0x00
+    ])]
+    #[case(vec![
+        0x8d, 0xe9, 0x70, // sta $70e9
+        0xa9, 0x05,  // lda #$05
+        0xa0, 0x05, // ldy #$05
+        0xd9, 0xe4, 0x70, // cmp $70e4,Y
+        0x00
+    ])]
+    fn cmp(
+        mut cpu: CPU,
+        #[case] program: Vec<u8>,
+        #[rustfmt::skip]
+        #[values(0b0000_0000, 0b0000_0001, 0b0000_0011, 0b0000_0010, 0b1000_0011)]
+        initial_status: u8,
+        #[values(
+            (0x05, 0b0000_0011), // a == M
+            (0x04, 0b0000_0001), // a >= M
+            (0x06, 0b0000_0000), // a < M
+        )]
+        value_and_expected_status: (u8, u8),
+    ) {
+        let (value_to_compare, expected_status) = value_and_expected_status;
+        let program = program
+            .iter()
+            .map(|&x| if x == 0xff { value_to_compare } else { x })
+            .collect();
+        cpu.load(program);
+        cpu.register_a = value_to_compare;
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    fn cmp_indirect_x(
+        mut cpu: CPU,
+        #[values(
+            (0x05, 0b0000_0011), // a == M
+            (0x04, 0b0000_0001), // a >= M
+            (0x06, 0b0000_0000), // a < M
+        )]
+        value_and_status: (u8, u8),
+    ) {
+        let (value_to_compare, expected_status) = value_and_status;
+        cpu.load(vec![0xc1, 0x01, 0x00]);
+        cpu.register_a = 0x05;
+        cpu.register_x = 0x01;
+        cpu.mem_write_u16(0x0002, 0x70e4);
+        cpu.mem_write(0x70e4, value_to_compare);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    fn cmp_indirect_y(
+        mut cpu: CPU,
+        #[values(
+            (0x05, 0b0000_0011), // a == M
+            (0x04, 0b0000_0001), // a >= M
+            (0x06, 0b0000_0000), // a < M
+        )]
+        value_and_status: (u8, u8),
+    ) {
+        let (value_to_compare, expected_status) = value_and_status;
+        cpu.load(vec![0xd1, 0x02, 0x00]);
+        cpu.register_a = 0x05;
+        cpu.register_y = 0x01;
+        cpu.mem_write_u16(0x02, 0x70e4);
+        cpu.mem_write(0x70e5, value_to_compare);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    fn cmp_negative_flag(
+        mut cpu: CPU,
+        #[values(
+            (0xf5, 0b1000_0011), // a == M
+            (0xf4, 0b1000_0001), // a >= M
+            (0xf6, 0b1000_0000), // a < M
+        )]
+        value_and_status: (u8, u8),
+    ) {
+        let (value_to_compare, expected_status) = value_and_status;
+        cpu.load(vec![0xc9, value_to_compare, 0x00]);
+        cpu.register_a = 0xf5;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0xf5);
+        assert_eq!(cpu.status, expected_status);
     }
 
     #[rstest]
