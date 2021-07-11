@@ -109,8 +109,8 @@ impl CPU {
                 "CLI" => self.clear_status_flag(StatusFlag::InterruptDisable),
                 "CLV" => self.clear_status_flag(StatusFlag::Overflow),
                 "CMP" => self.cmp(&opcode.mode),
-                // "CPX" => self.cpx(&opcode.mode),
-                // "CPY" => self.cpy(&opcode.mode),
+                "CPX" => self.cpx(&opcode.mode),
+                "CPY" => self.cpy(&opcode.mode),
                 "DEC" => self.dec(&opcode.mode),
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
@@ -217,20 +217,35 @@ impl CPU {
     fn cmp(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read(addr);
+        self.compare(self.register_a, value);
+    }
 
-        if self.register_a == value {
+    fn cpx(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.compare(self.register_x, value);
+    }
+
+    fn cpy(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.compare(self.register_y, value);
+    }
+
+    fn compare(&mut self, register: u8, value: u8) {
+        if register == value {
             self.set_status_flag(StatusFlag::Zero);
         } else {
             self.clear_status_flag(StatusFlag::Zero);
         }
 
-        if self.register_a >= value {
+        if register >= value {
             self.set_status_flag(StatusFlag::Carry);
         } else {
             self.clear_status_flag(StatusFlag::Carry);
         }
 
-        if self.register_a & 0b1000_0000 != 0 {
+        if register & 0b1000_0000 != 0 {
             self.set_status_flag(StatusFlag::Negative)
         } else {
             self.clear_status_flag(StatusFlag::Negative);
@@ -805,6 +820,40 @@ mod test {
         0xd9, 0xe4, 0x70, // cmp $70e4,Y
         0x00
     ])]
+    #[case(vec![
+        0xa2, 0x05,  // ldx #$05
+        0xe0, 0xff, // cpx #$ff (placeholder)
+        0x00
+    ])]
+    #[case(vec![
+        0x85, 0x10, // sta $10
+        0xa2, 0x05,  // ldx #$05
+        0xe4, 0x10, // cpx $10
+        0x00
+    ])]
+    #[case(vec![
+        0x8d, 0xe4, 0x70, // sta $70e4
+        0xa2, 0x05,  // ldx #$05
+        0xec, 0xe4, 0x70, // cmp $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0xa0, 0x05,  // ldy #$05
+        0xc0, 0xff, // cpy #$ff (placeholder)
+        0x00
+    ])]
+    #[case(vec![
+        0x85, 0x10, // sta $10
+        0xa0, 0x05,  // ldy #$05
+        0xc4, 0x10, // cpy $10
+        0x00
+    ])]
+    #[case(vec![
+        0x8d, 0xe4, 0x70, // sta $70e4
+        0xa0, 0x05,  // ldy #$05
+        0xcc, 0xe4, 0x70, // cpy $70e4
+        0x00
+    ])]
     fn cmp(
         mut cpu: CPU,
         #[case] program: Vec<u8>,
@@ -827,7 +876,6 @@ mod test {
         cpu.register_a = value_to_compare;
         cpu.status = initial_status;
         cpu.run();
-        assert_eq!(cpu.register_a, 0x05);
         assert_eq!(cpu.status, expected_status);
     }
 
