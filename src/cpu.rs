@@ -2,6 +2,7 @@ use crate::opcodes;
 
 #[derive(Debug)]
 pub enum AddressingMode {
+    Accumulator,
     Immediate,
     ZeroPage,
     ZeroPageX,
@@ -123,7 +124,7 @@ impl CPU {
                 "LDA" => self.lda(&opcode.mode),
                 "LDX" => self.ldx(&opcode.mode),
                 "LDY" => self.ldy(&opcode.mode),
-                // "LSR" => self.lsr(&opcode.mode),
+                "LSR" => self.lsr(&opcode.mode),
                 // "NOP" => self.nop(&opcode.mode),
                 "ORA" => self.ora(&opcode.mode),
                 // "PHA" => self.pha(&opcode.mode),
@@ -319,6 +320,32 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_y);
     }
 
+    fn lsr(&mut self, mode: &AddressingMode) {
+        match mode {
+            AddressingMode::Accumulator => {
+                if self.register_a & 0b0000_0001 > 0 {
+                    self.set_status_flag(StatusFlag::Carry);
+                } else {
+                    self.clear_status_flag(StatusFlag::Carry);
+                }
+                self.register_a >>= 1;
+                self.update_zero_and_negative_flags(self.register_a);
+            }
+            _ => {
+                let addr = self.get_operand_address(mode);
+                let value = self.mem_read(addr);
+                if value & 0b0000_0001 > 0 {
+                    self.set_status_flag(StatusFlag::Carry);
+                } else {
+                    self.clear_status_flag(StatusFlag::Carry);
+                }
+                let new_value = value >> 1;
+                self.mem_write(addr, new_value);
+                self.update_zero_and_negative_flags(new_value);
+            }
+        };
+    }
+
     fn ora(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read(addr);
@@ -405,7 +432,7 @@ impl CPU {
                 self.mem_read_u16(ptr.into())
                     .wrapping_add(self.register_y.into())
             }
-            AddressingMode::NoneAddressing => {
+            _ => {
                 panic!("mode {:?} not supported", mode);
             }
         }
@@ -413,7 +440,7 @@ impl CPU {
 
     fn get_program_counter_increment(&self, mode: &AddressingMode) -> u16 {
         match mode {
-            AddressingMode::NoneAddressing => 0,
+            AddressingMode::Accumulator | AddressingMode::NoneAddressing => 0,
             AddressingMode::Immediate
             | AddressingMode::ZeroPage
             | AddressingMode::ZeroPageX
@@ -1267,6 +1294,68 @@ mod test {
         cpu.load_and_run(vec![0xa0, 0xf0, 0x00]);
         assert_eq!(cpu.register_y, 0xf0);
         assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn lsr(
+        mut cpu: CPU,
+        #[values(
+            // initial_value, expected_value, initial_status, expected_status
+            (0b1111_1111, 0b0111_1111, 0b0000_0000, 0b0000_0001),
+            (0b0000_1111, 0b0000_0111, 0b0000_0000, 0b0000_0001),
+            (0b0000_0001, 0b0000_0000, 0b0000_0000, 0b0000_0011),
+            (0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0010),
+            (0b1111_1111, 0b0111_1111, 0b1111_1111, 0b0111_1101),
+            (0b0000_1111, 0b0000_0111, 0b1111_1111, 0b0111_1101),
+            (0b0000_0000, 0b0000_0000, 0b1111_1111, 0b0111_1110),
+        )]
+        initial_and_expected: (u8, u8, u8, u8),
+    ) {
+        let (initial_value, expected_value, initial_status, expected_status) = initial_and_expected;
+        cpu.load(vec![0x4a, 0x00]);
+        cpu.register_a = initial_value;
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(cpu.register_a, expected_value);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    #[case(vec![0x46, 0x10, 0x00], 0x10)] // lsr $10
+    #[case(vec![
+        0xa2, 0x08, // ldx #$08
+        0x56, 0x08, // lsr $08,X
+        0x00
+    ], 0x10)]
+    #[case(vec![0x4e, 0xe4, 0x70, 0x00], 0x70e4)] // lsr $70e4
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x5e, 0xe4, 0x70, // lsr $70e4,X
+        0x00
+    ], 0x70e9)]
+    fn lsr_memory(
+        mut cpu: CPU,
+        #[case] program: Vec<u8>,
+        #[case] mem_addr: u16,
+        #[values(
+            // initial_value, expected_value, initial_status, expected_status
+            (0b1111_1111, 0b0111_1111, 0b0000_0000, 0b0000_0001),
+            (0b0000_1111, 0b0000_0111, 0b0000_0000, 0b0000_0001),
+            (0b0000_0001, 0b0000_0000, 0b0000_0000, 0b0000_0011),
+            (0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0010),
+            (0b1111_1111, 0b0111_1111, 0b1111_1111, 0b0111_1101),
+            (0b0000_1111, 0b0000_0111, 0b1111_1111, 0b0111_1101),
+            (0b0000_0000, 0b0000_0000, 0b1111_1111, 0b0111_1110),
+        )]
+        initial_and_expected: (u8, u8, u8, u8),
+    ) {
+        let (initial_value, expected_value, initial_status, expected_status) = initial_and_expected;
+        cpu.load(program);
+        cpu.mem_write(mem_addr, initial_value);
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(cpu.mem_read(mem_addr), expected_value);
+        assert_eq!(cpu.status, expected_status);
     }
 
     #[rstest]

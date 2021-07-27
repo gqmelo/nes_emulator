@@ -117,6 +117,12 @@ lazy_static! {
         OpCode::new(0xb4, "LDY", 4, AddressingMode::ZeroPageX),
         OpCode::new(0xac, "LDY", 4, AddressingMode::Absolute),
         OpCode::new(0xbc, "LDY", 4, AddressingMode::AbsoluteX),
+        // LSR
+        OpCode::new(0x4a, "LSR", 2, AddressingMode::Accumulator),
+        OpCode::new(0x46, "LSR", 5, AddressingMode::ZeroPage),
+        OpCode::new(0x56, "LSR", 6, AddressingMode::ZeroPageX),
+        OpCode::new(0x4e, "LSR", 6, AddressingMode::Absolute),
+        OpCode::new(0x5e, "LSR", 7, AddressingMode::AbsoluteX),
         // ORA
         OpCode::new(0x09, "ORA", 2, AddressingMode::Immediate),
         OpCode::new(0x05, "ORA", 3, AddressingMode::ZeroPage),
