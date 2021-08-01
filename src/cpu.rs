@@ -131,8 +131,8 @@ impl CPU {
                 // "PHP" => self.php(&opcode.mode),
                 // "PLA" => self.pla(&opcode.mode),
                 // "PLP" => self.plp(&opcode.mode),
-                // "ROL" => self.rol(&opcode.mode),
-                // "ROR" => self.ror(&opcode.mode),
+                "ROL" => self.rol(&opcode.mode),
+                "ROR" => self.ror(&opcode.mode),
                 // "RTI" => self.rti(&opcode.mode),
                 // "RTS" => self.rts(&opcode.mode),
                 // "SBC" => self.sbc(&opcode.mode),
@@ -367,6 +367,76 @@ impl CPU {
                 }
                 let new_value = value >> 1;
                 self.mem_write(addr, new_value);
+                self.update_zero_and_negative_flags(new_value);
+            }
+        };
+    }
+
+    fn rol(&mut self, mode: &AddressingMode) {
+        let old_carry = (0b0000_0001 << StatusFlag::Carry as u8) & self.status;
+        match mode {
+            AddressingMode::Accumulator => {
+                let should_set_carry = self.register_a & 0b1000_0000 > 0;
+                self.register_a <<= 1;
+                if old_carry > 0 {
+                    self.register_a |= 0b0000_0001;
+                }
+                if should_set_carry {
+                    self.set_status_flag(StatusFlag::Carry);
+                } else {
+                    self.clear_status_flag(StatusFlag::Carry);
+                }
+                self.update_zero_and_negative_flags(self.register_a);
+            }
+            _ => {
+                let addr = self.get_operand_address(mode);
+                let value = self.mem_read(addr);
+                let should_set_carry = value & 0b1000_0000 > 0;
+                let mut new_value = value << 1;
+                if old_carry > 0 {
+                    new_value |= 0b0000_0001;
+                }
+                self.mem_write(addr, new_value);
+                if should_set_carry {
+                    self.set_status_flag(StatusFlag::Carry);
+                } else {
+                    self.clear_status_flag(StatusFlag::Carry);
+                }
+                self.update_zero_and_negative_flags(new_value);
+            }
+        };
+    }
+
+    fn ror(&mut self, mode: &AddressingMode) {
+        let old_carry = (0b0000_0001 << StatusFlag::Carry as u8) & self.status;
+        match mode {
+            AddressingMode::Accumulator => {
+                let should_set_carry = self.register_a & 0b0000_0001 > 0;
+                self.register_a >>= 1;
+                if old_carry > 0 {
+                    self.register_a |= 0b1000_0000;
+                }
+                if should_set_carry {
+                    self.set_status_flag(StatusFlag::Carry);
+                } else {
+                    self.clear_status_flag(StatusFlag::Carry);
+                }
+                self.update_zero_and_negative_flags(self.register_a);
+            }
+            _ => {
+                let addr = self.get_operand_address(mode);
+                let value = self.mem_read(addr);
+                let should_set_carry = value & 0b0000_0001 > 0;
+                let mut new_value = value >> 1;
+                if old_carry > 0 {
+                    new_value |= 0b1000_0000;
+                }
+                self.mem_write(addr, new_value);
+                if should_set_carry {
+                    self.set_status_flag(StatusFlag::Carry);
+                } else {
+                    self.clear_status_flag(StatusFlag::Carry);
+                }
                 self.update_zero_and_negative_flags(new_value);
             }
         };
@@ -1434,6 +1504,138 @@ mod test {
             (0b1111_1111, 0b0111_1111, 0b1111_1111, 0b0111_1101),
             (0b0000_1111, 0b0000_0111, 0b1111_1111, 0b0111_1101),
             (0b0000_0000, 0b0000_0000, 0b1111_1111, 0b0111_1110),
+        )]
+        initial_and_expected: (u8, u8, u8, u8),
+    ) {
+        let (initial_value, expected_value, initial_status, expected_status) = initial_and_expected;
+        cpu.load(program);
+        cpu.mem_write(mem_addr, initial_value);
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(cpu.mem_read(mem_addr), expected_value);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    fn rol(
+        mut cpu: CPU,
+        #[values(
+            // initial_value, expected_value, initial_status, expected_status
+            (0b1111_1111, 0b1111_1110, 0b0000_0000, 0b1000_0001),
+            (0b0000_1111, 0b0001_1110, 0b0000_0000, 0b0000_0000),
+            (0b1111_0000, 0b1110_0000, 0b0000_0000, 0b1000_0001),
+            (0b1000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0011),
+            (0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0010),
+            (0b1111_1111, 0b1111_1111, 0b1111_1111, 0b1111_1101),
+            (0b0000_1111, 0b0001_1111, 0b1111_1111, 0b0111_1100),
+            (0b1111_0000, 0b1110_0001, 0b1111_1111, 0b1111_1101),
+            (0b0000_0000, 0b0000_0001, 0b1111_1111, 0b0111_1100),
+        )]
+        initial_and_expected: (u8, u8, u8, u8),
+    ) {
+        let (initial_value, expected_value, initial_status, expected_status) = initial_and_expected;
+        cpu.load(vec![0x2a, 0x00]);
+        cpu.register_a = initial_value;
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(cpu.register_a, expected_value);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    #[case(vec![0x26, 0x10, 0x00], 0x10)] // rol $10
+    #[case(vec![
+        0xa2, 0x08, // ldx #$08
+        0x36, 0x08, // rol $08,X
+        0x00
+    ], 0x10)]
+    #[case(vec![0x2e, 0xe4, 0x70, 0x00], 0x70e4)] // rol $70e4
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x3e, 0xe4, 0x70, // rol $70e4,X
+        0x00
+    ], 0x70e9)]
+    fn rol_memory(
+        mut cpu: CPU,
+        #[case] program: Vec<u8>,
+        #[case] mem_addr: u16,
+        #[values(
+            // initial_value, expected_value, initial_status, expected_status
+            (0b1111_1111, 0b1111_1110, 0b0000_0000, 0b1000_0001),
+            (0b0000_1111, 0b0001_1110, 0b0000_0000, 0b0000_0000),
+            (0b1111_0000, 0b1110_0000, 0b0000_0000, 0b1000_0001),
+            (0b1000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0011),
+            (0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0010),
+            (0b1111_1111, 0b1111_1111, 0b1111_1111, 0b1111_1101),
+            (0b0000_1111, 0b0001_1111, 0b1111_1111, 0b0111_1100),
+            (0b1111_0000, 0b1110_0001, 0b1111_1111, 0b1111_1101),
+            (0b0000_0000, 0b0000_0001, 0b1111_1111, 0b0111_1100),
+        )]
+        initial_and_expected: (u8, u8, u8, u8),
+    ) {
+        let (initial_value, expected_value, initial_status, expected_status) = initial_and_expected;
+        cpu.load(program);
+        cpu.mem_write(mem_addr, initial_value);
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(cpu.mem_read(mem_addr), expected_value);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    fn ror(
+        mut cpu: CPU,
+        #[values(
+            // initial_value, expected_value, initial_status, expected_status
+            (0b1111_1111, 0b0111_1111, 0b0000_0000, 0b0000_0001),
+            (0b0000_1111, 0b0000_0111, 0b0000_0000, 0b0000_0001),
+            (0b1111_0000, 0b0111_1000, 0b0000_0000, 0b0000_0000),
+            (0b0000_0001, 0b0000_0000, 0b0000_0000, 0b0000_0011),
+            (0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0010),
+            (0b1111_1111, 0b1111_1111, 0b1111_1111, 0b1111_1101),
+            (0b0000_1111, 0b1000_0111, 0b1111_1111, 0b1111_1101),
+            (0b1111_0000, 0b1111_1000, 0b1111_1111, 0b1111_1100),
+            (0b0000_0000, 0b1000_0000, 0b1111_1111, 0b1111_1100),
+        )]
+        initial_and_expected: (u8, u8, u8, u8),
+    ) {
+        let (initial_value, expected_value, initial_status, expected_status) = initial_and_expected;
+        cpu.load(vec![0x6a, 0x00]);
+        cpu.register_a = initial_value;
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(cpu.register_a, expected_value);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    #[case(vec![0x66, 0x10, 0x00], 0x10)] // ror $10
+    #[case(vec![
+        0xa2, 0x08, // ldx #$08
+        0x76, 0x08, // ror $08,X
+        0x00
+    ], 0x10)]
+    #[case(vec![0x6e, 0xe4, 0x70, 0x00], 0x70e4)] // ror $70e4
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x7e, 0xe4, 0x70, // ror $70e4,X
+        0x00
+    ], 0x70e9)]
+    fn ror_memory(
+        mut cpu: CPU,
+        #[case] program: Vec<u8>,
+        #[case] mem_addr: u16,
+        #[values(
+            // initial_value, expected_value, initial_status, expected_status
+            (0b1111_1111, 0b0111_1111, 0b0000_0000, 0b0000_0001),
+            (0b0000_1111, 0b0000_0111, 0b0000_0000, 0b0000_0001),
+            (0b1111_0000, 0b0111_1000, 0b0000_0000, 0b0000_0000),
+            (0b0000_0001, 0b0000_0000, 0b0000_0000, 0b0000_0011),
+            (0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0010),
+            (0b1111_1111, 0b1111_1111, 0b1111_1111, 0b1111_1101),
+            (0b0000_1111, 0b1000_0111, 0b1111_1111, 0b1111_1101),
+            (0b1111_0000, 0b1111_1000, 0b1111_1111, 0b1111_1100),
+            (0b0000_0000, 0b1000_0000, 0b1111_1111, 0b1111_1100),
         )]
         initial_and_expected: (u8, u8, u8, u8),
     ) {
