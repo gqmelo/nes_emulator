@@ -94,7 +94,7 @@ impl CPU {
             match opcode.mnemonic {
                 // "ADC" => self.adc(&opcode.mode),
                 "AND" => self.and(&opcode.mode),
-                // "ASL" => self.asl(&opcode.mode),
+                "ASL" => self.asl(&opcode.mode),
                 "BCC" => self.branch_status_flag_clear(StatusFlag::Carry),
                 "BCS" => self.branch_status_flag_set(StatusFlag::Carry),
                 "BEQ" => self.branch_status_flag_set(StatusFlag::Zero),
@@ -318,6 +318,32 @@ impl CPU {
         let value = self.mem_read(addr);
         self.register_y = value;
         self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn asl(&mut self, mode: &AddressingMode) {
+        match mode {
+            AddressingMode::Accumulator => {
+                if self.register_a & 0b1000_0000 > 0 {
+                    self.set_status_flag(StatusFlag::Carry);
+                } else {
+                    self.clear_status_flag(StatusFlag::Carry);
+                }
+                self.register_a <<= 1;
+                self.update_zero_and_negative_flags(self.register_a);
+            }
+            _ => {
+                let addr = self.get_operand_address(mode);
+                let value = self.mem_read(addr);
+                if value & 0b1000_0000 > 0 {
+                    self.set_status_flag(StatusFlag::Carry);
+                } else {
+                    self.clear_status_flag(StatusFlag::Carry);
+                }
+                let new_value = value << 1;
+                self.mem_write(addr, new_value);
+                self.update_zero_and_negative_flags(new_value);
+            }
+        };
     }
 
     fn lsr(&mut self, mode: &AddressingMode) {
@@ -1294,6 +1320,68 @@ mod test {
         cpu.load_and_run(vec![0xa0, 0xf0, 0x00]);
         assert_eq!(cpu.register_y, 0xf0);
         assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn asl(
+        mut cpu: CPU,
+        #[values(
+            // initial_value, expected_value, initial_status, expected_status
+            (0b1111_1111, 0b1111_1110, 0b0000_0000, 0b1000_0001),
+            (0b1111_0000, 0b1110_0000, 0b0000_0000, 0b1000_0001),
+            (0b1000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0011),
+            (0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0010),
+            (0b1111_1111, 0b1111_1110, 0b1111_1111, 0b1111_1101),
+            (0b1111_0000, 0b1110_0000, 0b1111_1111, 0b1111_1101),
+            (0b0000_0000, 0b0000_0000, 0b1111_1111, 0b0111_1110),
+        )]
+        initial_and_expected: (u8, u8, u8, u8),
+    ) {
+        let (initial_value, expected_value, initial_status, expected_status) = initial_and_expected;
+        cpu.load(vec![0x0a, 0x00]);
+        cpu.register_a = initial_value;
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(cpu.register_a, expected_value);
+        assert_eq!(cpu.status, expected_status);
+    }
+
+    #[rstest]
+    #[case(vec![0x06, 0x10, 0x00], 0x10)] // asl $10
+    #[case(vec![
+        0xa2, 0x08, // ldx #$08
+        0x16, 0x08, // asl $08,X
+        0x00
+    ], 0x10)]
+    #[case(vec![0x0e, 0xe4, 0x70, 0x00], 0x70e4)] // asl $70e4
+    #[case(vec![
+        0xa2, 0x05, // ldx #$05
+        0x1e, 0xe4, 0x70, // asl $70e4,X
+        0x00
+    ], 0x70e9)]
+    fn asl_memory(
+        mut cpu: CPU,
+        #[case] program: Vec<u8>,
+        #[case] mem_addr: u16,
+        #[values(
+            // initial_value, expected_value, initial_status, expected_status
+            (0b1111_1111, 0b1111_1110, 0b0000_0000, 0b1000_0001),
+            (0b1111_0000, 0b1110_0000, 0b0000_0000, 0b1000_0001),
+            (0b1000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0011),
+            (0b0000_0000, 0b0000_0000, 0b0000_0000, 0b0000_0010),
+            (0b1111_1111, 0b1111_1110, 0b1111_1111, 0b1111_1101),
+            (0b1111_0000, 0b1110_0000, 0b1111_1111, 0b1111_1101),
+            (0b0000_0000, 0b0000_0000, 0b1111_1111, 0b0111_1110),
+        )]
+        initial_and_expected: (u8, u8, u8, u8),
+    ) {
+        let (initial_value, expected_value, initial_status, expected_status) = initial_and_expected;
+        cpu.load(program);
+        cpu.mem_write(mem_addr, initial_value);
+        cpu.status = initial_status;
+        cpu.run();
+        assert_eq!(cpu.mem_read(mem_addr), expected_value);
+        assert_eq!(cpu.status, expected_status);
     }
 
     #[rstest]

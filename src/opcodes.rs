@@ -30,6 +30,12 @@ lazy_static! {
         OpCode::new(0x39, "AND", 4, AddressingMode::AbsoluteY),
         OpCode::new(0x21, "AND", 6, AddressingMode::IndirectX),
         OpCode::new(0x31, "AND", 5, AddressingMode::IndirectY),
+        // ASL
+        OpCode::new(0x0a, "ASL", 2, AddressingMode::Accumulator),
+        OpCode::new(0x06, "ASL", 5, AddressingMode::ZeroPage),
+        OpCode::new(0x16, "ASL", 6, AddressingMode::ZeroPageX),
+        OpCode::new(0x0e, "ASL", 6, AddressingMode::Absolute),
+        OpCode::new(0x1e, "ASL", 7, AddressingMode::AbsoluteX),
         // Branches
         OpCode::new(0x90, "BCC", 2, AddressingMode::Immediate),
         OpCode::new(0xb0, "BCS", 2, AddressingMode::Immediate),
