@@ -321,123 +321,87 @@ impl CPU {
     }
 
     fn asl(&mut self, mode: &AddressingMode) {
-        match mode {
-            AddressingMode::Accumulator => {
-                if self.register_a & 0b1000_0000 > 0 {
-                    self.set_status_flag(StatusFlag::Carry);
-                } else {
-                    self.clear_status_flag(StatusFlag::Carry);
-                }
-                self.register_a <<= 1;
-                self.update_zero_and_negative_flags(self.register_a);
-            }
-            _ => {
-                let addr = self.get_operand_address(mode);
-                let value = self.mem_read(addr);
-                if value & 0b1000_0000 > 0 {
-                    self.set_status_flag(StatusFlag::Carry);
-                } else {
-                    self.clear_status_flag(StatusFlag::Carry);
-                }
-                let new_value = value << 1;
-                self.mem_write(addr, new_value);
-                self.update_zero_and_negative_flags(new_value);
-            }
-        };
+        let value = self.get_shift_value(mode);
+
+        if value & 0b1000_0000 > 0 {
+            self.set_status_flag(StatusFlag::Carry);
+        } else {
+            self.clear_status_flag(StatusFlag::Carry);
+        }
+        let new_value = value << 1;
+        self.update_zero_and_negative_flags(new_value);
+
+        self.save_shift_value(mode, new_value);
     }
 
     fn lsr(&mut self, mode: &AddressingMode) {
-        match mode {
-            AddressingMode::Accumulator => {
-                if self.register_a & 0b0000_0001 > 0 {
-                    self.set_status_flag(StatusFlag::Carry);
-                } else {
-                    self.clear_status_flag(StatusFlag::Carry);
-                }
-                self.register_a >>= 1;
-                self.update_zero_and_negative_flags(self.register_a);
-            }
-            _ => {
-                let addr = self.get_operand_address(mode);
-                let value = self.mem_read(addr);
-                if value & 0b0000_0001 > 0 {
-                    self.set_status_flag(StatusFlag::Carry);
-                } else {
-                    self.clear_status_flag(StatusFlag::Carry);
-                }
-                let new_value = value >> 1;
-                self.mem_write(addr, new_value);
-                self.update_zero_and_negative_flags(new_value);
-            }
-        };
+        let value = self.get_shift_value(mode);
+
+        if value & 0b0000_0001 > 0 {
+            self.set_status_flag(StatusFlag::Carry);
+        } else {
+            self.clear_status_flag(StatusFlag::Carry);
+        }
+        let new_value = value >> 1;
+        self.update_zero_and_negative_flags(new_value);
+
+        self.save_shift_value(mode, new_value);
     }
 
     fn rol(&mut self, mode: &AddressingMode) {
         let old_carry = (0b0000_0001 << StatusFlag::Carry as u8) & self.status;
-        match mode {
-            AddressingMode::Accumulator => {
-                let should_set_carry = self.register_a & 0b1000_0000 > 0;
-                self.register_a <<= 1;
-                if old_carry > 0 {
-                    self.register_a |= 0b0000_0001;
-                }
-                if should_set_carry {
-                    self.set_status_flag(StatusFlag::Carry);
-                } else {
-                    self.clear_status_flag(StatusFlag::Carry);
-                }
-                self.update_zero_and_negative_flags(self.register_a);
-            }
-            _ => {
-                let addr = self.get_operand_address(mode);
-                let value = self.mem_read(addr);
-                let should_set_carry = value & 0b1000_0000 > 0;
-                let mut new_value = value << 1;
-                if old_carry > 0 {
-                    new_value |= 0b0000_0001;
-                }
-                self.mem_write(addr, new_value);
-                if should_set_carry {
-                    self.set_status_flag(StatusFlag::Carry);
-                } else {
-                    self.clear_status_flag(StatusFlag::Carry);
-                }
-                self.update_zero_and_negative_flags(new_value);
-            }
-        };
+        let value = self.get_shift_value(mode);
+
+        let should_set_carry = value & 0b1000_0000 > 0;
+        let mut new_value = value << 1;
+        if old_carry > 0 {
+            new_value |= 0b0000_0001;
+        }
+        if should_set_carry {
+            self.set_status_flag(StatusFlag::Carry);
+        } else {
+            self.clear_status_flag(StatusFlag::Carry);
+        }
+        self.update_zero_and_negative_flags(new_value);
+
+        self.save_shift_value(mode, new_value);
     }
 
     fn ror(&mut self, mode: &AddressingMode) {
         let old_carry = (0b0000_0001 << StatusFlag::Carry as u8) & self.status;
+        let value = self.get_shift_value(mode);
+
+        let should_set_carry = value & 0b0000_0001 > 0;
+        let mut new_value = value >> 1;
+        if old_carry > 0 {
+            new_value |= 0b1000_0000;
+        }
+        if should_set_carry {
+            self.set_status_flag(StatusFlag::Carry);
+        } else {
+            self.clear_status_flag(StatusFlag::Carry);
+        }
+        self.update_zero_and_negative_flags(new_value);
+
+        self.save_shift_value(mode, new_value);
+    }
+
+    fn get_shift_value(&mut self, mode: &AddressingMode) -> u8 {
         match mode {
-            AddressingMode::Accumulator => {
-                let should_set_carry = self.register_a & 0b0000_0001 > 0;
-                self.register_a >>= 1;
-                if old_carry > 0 {
-                    self.register_a |= 0b1000_0000;
-                }
-                if should_set_carry {
-                    self.set_status_flag(StatusFlag::Carry);
-                } else {
-                    self.clear_status_flag(StatusFlag::Carry);
-                }
-                self.update_zero_and_negative_flags(self.register_a);
-            }
+            AddressingMode::Accumulator => self.register_a,
             _ => {
                 let addr = self.get_operand_address(mode);
-                let value = self.mem_read(addr);
-                let should_set_carry = value & 0b0000_0001 > 0;
-                let mut new_value = value >> 1;
-                if old_carry > 0 {
-                    new_value |= 0b1000_0000;
-                }
+                self.mem_read(addr)
+            }
+        }
+    }
+
+    fn save_shift_value(&mut self, mode: &AddressingMode, new_value: u8) {
+        match mode {
+            AddressingMode::Accumulator => self.register_a = new_value,
+            _ => {
+                let addr = self.get_operand_address(mode);
                 self.mem_write(addr, new_value);
-                if should_set_carry {
-                    self.set_status_flag(StatusFlag::Carry);
-                } else {
-                    self.clear_status_flag(StatusFlag::Carry);
-                }
-                self.update_zero_and_negative_flags(new_value);
             }
         };
     }
