@@ -30,7 +30,7 @@ pub struct CPU {
     pub register_a: u8,
     pub register_x: u8,
     pub register_y: u8,
-    pub register_s: u8,
+    pub stack_pointer: u8,
     pub status: u8,
     pub program_counter: u16,
     memory: [u8; 0xFFFF],
@@ -42,7 +42,7 @@ impl CPU {
             register_a: 0,
             register_x: 0,
             register_y: 0,
-            register_s: 0,
+            stack_pointer: 0xFF,
             status: 0,
             program_counter: 0,
             memory: [0; 0xFFFF],
@@ -64,7 +64,7 @@ impl CPU {
         self.register_a = 0;
         self.register_x = 0;
         self.register_y = 0;
-        self.register_s = 0;
+        self.stack_pointer = 0xFF;
         self.status = 0;
         self.program_counter = self.mem_read_u16(0xFFFC)
     }
@@ -79,13 +79,14 @@ impl CPU {
                 .expect(&format!("invalid opcode: {:#04x}", code));
 
             println!(
-                "pc: {:#06x}, instr: {} ({:#04x}), a: {:#04x}; x: {:#04x}; y: {:#04x}, status: {:#010b}",
+                "pc: {:#06x}, instr: {} ({:#04x}), a: {:#04x}; x: {:#04x}; y: {:#04x}, stack: {:#02x}, status: {:#010b}",
                 self.program_counter,
                 opcode.mnemonic,
                 code,
                 self.register_a,
                 self.register_x,
                 self.register_y,
+                self.stack_pointer,
                 self.status
             );
 
@@ -127,9 +128,9 @@ impl CPU {
                 "LSR" => self.lsr(&opcode.mode),
                 // "NOP" => self.nop(&opcode.mode),
                 "ORA" => self.ora(&opcode.mode),
-                // "PHA" => self.pha(&opcode.mode),
+                "PHA" => self.pha(),
                 // "PHP" => self.php(&opcode.mode),
-                // "PLA" => self.pla(&opcode.mode),
+                "PLA" => self.pla(),
                 // "PLP" => self.plp(&opcode.mode),
                 "ROL" => self.rol(&opcode.mode),
                 "ROR" => self.ror(&opcode.mode),
@@ -413,6 +414,19 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
+    fn pha(&mut self) {
+        let addr: u16 = 0x100 as u16 + self.stack_pointer as u16;
+        self.mem_write(addr, self.register_a);
+        self.stack_pointer = self.stack_pointer.wrapping_sub(1);
+    }
+
+    fn pla(&mut self) {
+        let addr: u16 = 0x100 as u16 + self.stack_pointer as u16;
+        self.register_a = self.mem_read(addr);
+        self.stack_pointer = self.stack_pointer.wrapping_add(1);
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
     fn sta(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
         self.mem_write(addr, self.register_a);
@@ -439,7 +453,7 @@ impl CPU {
     }
 
     fn tsx(&mut self) {
-        self.register_x = self.register_s;
+        self.register_x = self.stack_pointer;
         self.update_zero_and_negative_flags(self.register_x);
     }
 
@@ -449,8 +463,8 @@ impl CPU {
     }
 
     fn txs(&mut self) {
-        self.register_s = self.register_x;
-        self.update_zero_and_negative_flags(self.register_s);
+        self.stack_pointer = self.register_x;
+        self.update_zero_and_negative_flags(self.stack_pointer);
     }
 
     fn tya(&mut self) {
@@ -1696,6 +1710,49 @@ mod test {
     }
 
     #[rstest]
+    fn pha(mut cpu: CPU) {
+        cpu.load(vec![0x48, 0x00]);
+        cpu.register_a = 0x05;
+        cpu.run();
+        assert_eq!(cpu.stack_pointer, 0xfe);
+        assert_eq!(cpu.mem_read(0x01ff), 0x05);
+        assert_eq!(cpu.status, 0b0000_0000);
+    }
+
+    #[rstest]
+    fn pla(mut cpu: CPU) {
+        cpu.load(vec![0x68, 0x00]);
+        cpu.stack_pointer = 0xfe;
+        cpu.mem_write(0x1fe, 0x05);
+        cpu.run();
+        assert_eq!(cpu.stack_pointer, 0xff);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.status, 0b0000_0000);
+    }
+
+    #[rstest]
+    fn pla_zero_flag(mut cpu: CPU) {
+        cpu.load(vec![0x68, 0x00]);
+        cpu.stack_pointer = 0xfe;
+        cpu.mem_write(0x1fe, 0x00);
+        cpu.run();
+        assert_eq!(cpu.stack_pointer, 0xff);
+        assert_eq!(cpu.register_a, 0x00);
+        assert_eq!(cpu.status, 0b0000_0010);
+    }
+
+    #[rstest]
+    fn pla_negative_flag(mut cpu: CPU) {
+        cpu.load(vec![0x68, 0x00]);
+        cpu.stack_pointer = 0xfe;
+        cpu.mem_write(0x1fe, 0x95);
+        cpu.run();
+        assert_eq!(cpu.stack_pointer, 0xff);
+        assert_eq!(cpu.register_a, 0x95);
+        assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
     #[case(vec![0x85, 0x10, 0x00])] // sta $10
     #[case(vec![
         0xa2, 0x02, // ldx #$02
@@ -1841,7 +1898,7 @@ mod test {
     #[rstest]
     fn tsx(mut cpu: CPU) {
         cpu.load(vec![0xba, 0x00]);
-        cpu.register_s = 5;
+        cpu.stack_pointer = 5;
         cpu.run();
         assert_eq!(cpu.register_x, 0x05);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -1850,7 +1907,7 @@ mod test {
     #[rstest]
     fn tsx_zero_flag(mut cpu: CPU) {
         cpu.load(vec![0xba, 0x00]);
-        cpu.register_s = 0;
+        cpu.stack_pointer = 0;
         cpu.run();
         assert_eq!(cpu.register_x, 0x00);
         assert_eq!(cpu.status, 0b0000_0010);
@@ -1859,7 +1916,7 @@ mod test {
     #[rstest]
     fn tsx_negative_flag(mut cpu: CPU) {
         cpu.load(vec![0xba, 0x00]);
-        cpu.register_s = 0xf0;
+        cpu.stack_pointer = 0xf0;
         cpu.run();
         assert_eq!(cpu.register_x, 0xf0);
         assert_eq!(cpu.status, 0b1000_0000);
@@ -1889,21 +1946,21 @@ mod test {
     #[rstest]
     fn txs(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa2, 0x05, 0x9a, 0x00]);
-        assert_eq!(cpu.register_s, 0x05);
+        assert_eq!(cpu.stack_pointer, 0x05);
         assert_eq!(cpu.status, 0b0000_0000);
     }
 
     #[rstest]
     fn txs_zero_flag(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa2, 0x00, 0x9a, 0x00]);
-        assert_eq!(cpu.register_s, 0x00);
+        assert_eq!(cpu.stack_pointer, 0x00);
         assert_eq!(cpu.status, 0b0000_0010);
     }
 
     #[rstest]
     fn txs_negative_flag(mut cpu: CPU) {
         cpu.load_and_run(vec![0xa2, 0xf0, 0x9a, 0x00]);
-        assert_eq!(cpu.register_s, 0xf0);
+        assert_eq!(cpu.stack_pointer, 0xf0);
         assert_eq!(cpu.status, 0b1000_0000);
     }
 
