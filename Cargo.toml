@@ -10,4 +10,4 @@ edition = "2018"
 lazy_static = "1.4.0"
 
 [dev-dependencies]
-rstest = "0.10.0"
+rstest = "0.18.1"
