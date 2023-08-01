@@ -126,12 +126,12 @@ impl CPU {
                 "LDX" => self.ldx(&opcode.mode),
                 "LDY" => self.ldy(&opcode.mode),
                 "LSR" => self.lsr(&opcode.mode),
-                // "NOP" => self.nop(&opcode.mode),
+                "NOP" => continue,
                 "ORA" => self.ora(&opcode.mode),
                 "PHA" => self.pha(),
-                // "PHP" => self.php(&opcode.mode),
+                "PHP" => self.php(),
                 "PLA" => self.pla(),
-                // "PLP" => self.plp(&opcode.mode),
+                "PLP" => self.plp(),
                 "ROL" => self.rol(&opcode.mode),
                 "ROR" => self.ror(&opcode.mode),
                 // "RTI" => self.rti(&opcode.mode),
@@ -415,16 +415,32 @@ impl CPU {
     }
 
     fn pha(&mut self) {
+        self.push_to_stack(self.register_a);
+    }
+
+    fn php(&mut self) {
+        self.push_to_stack(self.status);
+    }
+
+    fn push_to_stack(&mut self, value: u8) {
         let addr: u16 = 0x100 as u16 + self.stack_pointer as u16;
-        self.mem_write(addr, self.register_a);
+        self.mem_write(addr, value);
         self.stack_pointer = self.stack_pointer.wrapping_sub(1);
     }
 
     fn pla(&mut self) {
-        let addr: u16 = 0x100 as u16 + self.stack_pointer as u16;
-        self.register_a = self.mem_read(addr);
-        self.stack_pointer = self.stack_pointer.wrapping_add(1);
+        self.register_a = self.pop_from_stack();
         self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn plp(&mut self) {
+        self.status = self.pop_from_stack();
+    }
+
+    fn pop_from_stack(&mut self) -> u8 {
+        self.stack_pointer = self.stack_pointer.wrapping_add(1);
+        let addr: u16 = 0x100 as u16 + self.stack_pointer as u16;
+        return self.mem_read(addr);
     }
 
     fn sta(&mut self, mode: &AddressingMode) {
@@ -1720,10 +1736,20 @@ mod test {
     }
 
     #[rstest]
+    fn php(mut cpu: CPU) {
+        cpu.load(vec![0x08, 0x00]);
+        cpu.status = 0b1101_0010;
+        cpu.run();
+        assert_eq!(cpu.stack_pointer, 0xfe);
+        assert_eq!(cpu.mem_read(0x01ff), 0b1101_0010);
+        assert_eq!(cpu.status, 0b1101_0010);
+    }
+
+    #[rstest]
     fn pla(mut cpu: CPU) {
         cpu.load(vec![0x68, 0x00]);
         cpu.stack_pointer = 0xfe;
-        cpu.mem_write(0x1fe, 0x05);
+        cpu.mem_write(0x1ff, 0x05);
         cpu.run();
         assert_eq!(cpu.stack_pointer, 0xff);
         assert_eq!(cpu.register_a, 0x05);
@@ -1734,7 +1760,7 @@ mod test {
     fn pla_zero_flag(mut cpu: CPU) {
         cpu.load(vec![0x68, 0x00]);
         cpu.stack_pointer = 0xfe;
-        cpu.mem_write(0x1fe, 0x00);
+        cpu.mem_write(0x1ff, 0x00);
         cpu.run();
         assert_eq!(cpu.stack_pointer, 0xff);
         assert_eq!(cpu.register_a, 0x00);
@@ -1745,11 +1771,21 @@ mod test {
     fn pla_negative_flag(mut cpu: CPU) {
         cpu.load(vec![0x68, 0x00]);
         cpu.stack_pointer = 0xfe;
-        cpu.mem_write(0x1fe, 0x95);
+        cpu.mem_write(0x1ff, 0x95);
         cpu.run();
         assert_eq!(cpu.stack_pointer, 0xff);
         assert_eq!(cpu.register_a, 0x95);
         assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn plp(mut cpu: CPU) {
+        cpu.load(vec![0x28, 0x00]);
+        cpu.stack_pointer = 0xfe;
+        cpu.mem_write(0x1ff, 0b1101_0010);
+        cpu.run();
+        assert_eq!(cpu.stack_pointer, 0xff);
+        assert_eq!(cpu.status, 0b1101_0010);
     }
 
     #[rstest]
@@ -2065,5 +2101,20 @@ mod test {
         cpu.run();
         assert_eq!(cpu.register_y, 0xff);
         assert_eq!(cpu.status, 0b1000_0000);
+    }
+
+    #[rstest]
+    fn nop(mut cpu: CPU) {
+        cpu.load(vec![0xea, 0x00]);
+        cpu.register_a = 0x05;
+        cpu.register_x = 0x1f;
+        cpu.register_y = 0xfe;
+        cpu.status = 0b1101_0010;
+        cpu.run();
+        assert_eq!(cpu.program_counter, 0x8001);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.register_x, 0x1f);
+        assert_eq!(cpu.register_y, 0xfe);
+        assert_eq!(cpu.status, 0b1101_0010);
     }
 }
