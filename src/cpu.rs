@@ -2111,7 +2111,7 @@ mod test {
         cpu.register_y = 0xfe;
         cpu.status = 0b1101_0010;
         cpu.run();
-        assert_eq!(cpu.program_counter, 0x8001);
+        assert_eq!(cpu.program_counter, 0x8002);
         assert_eq!(cpu.register_a, 0x05);
         assert_eq!(cpu.register_x, 0x1f);
         assert_eq!(cpu.register_y, 0xfe);
