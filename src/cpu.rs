@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 use crate::opcodes;
 
 #[derive(Debug)]
@@ -121,7 +123,7 @@ impl CPU {
                 "INX" => self.inx(),
                 "INY" => self.iny(),
                 "JMP" => self.jmp(&opcode.mode),
-                // "JSR" => self.jsr(&opcode.mode),
+                "JSR" => self.jsr(&opcode.mode),
                 "LDA" => self.lda(&opcode.mode),
                 "LDX" => self.ldx(&opcode.mode),
                 "LDY" => self.ldy(&opcode.mode),
@@ -135,7 +137,7 @@ impl CPU {
                 "ROL" => self.rol(&opcode.mode),
                 "ROR" => self.ror(&opcode.mode),
                 // "RTI" => self.rti(&opcode.mode),
-                // "RTS" => self.rts(&opcode.mode),
+                "RTS" => self.rts(),
                 // "SBC" => self.sbc(&opcode.mode),
                 "SEC" => self.set_status_flag(StatusFlag::Carry),
                 "SED" => self.set_status_flag(StatusFlag::Decimal),
@@ -154,6 +156,8 @@ impl CPU {
 
             match opcode.mnemonic {
                 "JMP" => {}
+                "JSR" => {}
+                "RTS" => {}
                 _ => self.program_counter += self.get_program_counter_increment(&opcode.mode),
             };
         }
@@ -300,6 +304,14 @@ impl CPU {
         self.program_counter = addr;
     }
 
+    fn jsr(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let return_addr = self.program_counter + self.get_program_counter_increment(&mode);
+        self.push_to_stack(((return_addr & 0xFF00) >> 8).try_into().unwrap());
+        self.push_to_stack((return_addr & 0x00FF).try_into().unwrap());
+        self.program_counter = addr;
+    }
+
     fn lda(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read(addr);
@@ -412,6 +424,13 @@ impl CPU {
         let value = self.mem_read(addr);
         self.register_a = self.register_a | value;
         self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn rts(&mut self) {
+        let low_byte = self.pop_from_stack();
+        let high_byte = self.pop_from_stack();
+        let return_addr = ((high_byte as u16) << 8) | low_byte as u16;
+        self.program_counter = return_addr;
     }
 
     fn pha(&mut self) {
@@ -896,6 +915,26 @@ mod test {
         cpu.mem_write_u16(0x70e4, 0x8007);
         cpu.run();
         assert_eq!(cpu.register_x, 0x06);
+    }
+
+    #[rstest]
+    fn jsr_and_rts(mut cpu: CPU) {
+        #[rustfmt::skip]
+        let program = vec![
+            0xa2, 0x05, // ldx #$05
+            0x20, 0x0b, 0x80, // jsr $800b
+            0x4c, 0x0f, 0x80, // jmp $800f
+            0xe8, // inx
+            0xe8, // inx
+            0xe8, // inx
+            0xa0, 0x10, // ldy #$10
+            0xe8, // inx
+            0x60, // rts
+            0x00,
+        ];
+        cpu.load_and_run(program);
+        assert_eq!(cpu.register_x, 0x06);
+        assert_eq!(cpu.register_y, 0x10);
     }
 
     #[rstest]
