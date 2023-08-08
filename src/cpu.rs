@@ -95,7 +95,7 @@ impl CPU {
             self.program_counter += 1;
 
             match opcode.mnemonic {
-                // "ADC" => self.adc(&opcode.mode),
+                "ADC" => self.adc(&opcode.mode),
                 "AND" => self.and(&opcode.mode),
                 "ASL" => self.asl(&opcode.mode),
                 "BCC" => self.branch_status_flag_clear(StatusFlag::Carry),
@@ -163,6 +163,42 @@ impl CPU {
         }
     }
 
+    fn adc(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.add_to_register_a(value);
+    }
+
+    /// note: ignoring decimal mode
+    /// http://www.righto.com/2012/12/the-6502-overflow-flag-explained.html
+    fn add_to_register_a(&mut self, value: u8) {
+        let sum = self.register_a as u16
+            + value as u16
+            + (if self.is_status_flag_set(StatusFlag::Carry) {
+                1
+            } else {
+                0
+            }) as u16;
+
+        let carry = sum > 0xff;
+        if carry {
+            self.set_status_flag(StatusFlag::Carry)
+        } else {
+            self.clear_status_flag(StatusFlag::Carry)
+        }
+
+        let result = sum as u8;
+
+        if (value ^ result) & (result ^ self.register_a) & 0x80 != 0 {
+            self.set_status_flag(StatusFlag::Overflow);
+        } else {
+            self.clear_status_flag(StatusFlag::Overflow);
+        }
+
+        self.register_a = result;
+        self.update_zero_and_negative_flags(self.register_a)
+    }
+
     fn and(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read(addr);
@@ -218,6 +254,11 @@ impl CPU {
     fn set_status_flag(&mut self, status_flag: StatusFlag) {
         let mask = 0b0000_0001 << status_flag as u8;
         self.status |= mask;
+    }
+
+    fn is_status_flag_set(&mut self, status_flag: StatusFlag) -> bool {
+        let mask = 0b0000_0001 << status_flag as u8;
+        return self.status & mask != 0;
     }
 
     fn cmp(&mut self, mode: &AddressingMode) {
@@ -605,6 +646,102 @@ mod test {
     }
 
     #[rstest]
+    #[case(vec![
+        0xa9, 0x70, // lda #$70
+        0x69, 0x09, // adc #$09
+    ])]
+    #[case(vec![
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x86, 0x10, // stx $10
+        0x65, 0x10, // adc $10
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x86, 0x15, // stx $15
+        0xa2, 0x05, // ldx #$05
+        0x75, 0x10, // adc $10,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x8e, 0xe4, 0x70, // stx $70e4
+        0x6d, 0xe4, 0x70, // adc $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa2, 0x05, // ldx #$05
+        0x7d, 0xe4, 0x70, // adc $70e4,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa0, 0x05, // ldy #$05
+        0x79, 0xe4, 0x70, // adc $70e4,Y
+        0x00
+    ])]
+    fn adc(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x79);
+        assert_eq!(cpu.status, 0b0000_0000);
+    }
+
+    #[rstest]
+    fn adc_indirect_x(mut cpu: CPU) {
+        cpu.load(vec![0x61, 0x01, 0x00]);
+        cpu.register_a = 0x70;
+        cpu.register_x = 0x01;
+        cpu.mem_write_u16(0x0002, 0x70e4);
+        cpu.mem_write(0x70e4, 0x09);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x79);
+        assert_eq!(cpu.status, 0b0000_0000);
+    }
+
+    #[rstest]
+    fn adc_indirect_y(mut cpu: CPU) {
+        cpu.load(vec![0x71, 0x02, 0x00]);
+        cpu.register_a = 0x70;
+        cpu.register_y = 0x01;
+        cpu.mem_write_u16(0x02, 0x70e4);
+        cpu.mem_write(0x70e5, 0x09);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x79);
+        assert_eq!(cpu.status, 0b0000_0000);
+    }
+
+    #[rstest]
+    fn adc_positive_overflow(mut cpu: CPU) {
+        cpu.load(vec![
+            0xa9, 0x7f, // lda #$7F
+            0x69, 0x01, // adc #$01
+        ]);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x80);
+        assert_eq!(cpu.status, 0b1100_0000);
+    }
+
+    #[rstest]
+    fn adc_negative_overflow(mut cpu: CPU) {
+        cpu.load(vec![
+            0xa9, 0x80, // lda #$80
+            0x69, 0xff, // adc #$ff
+        ]);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x7f);
+        assert_eq!(cpu.status, 0b0100_0001);
+    }
+
+    #[rstest]
     #[case(vec![0x29, 0x5e, 0x00])] // and #$5e
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
@@ -636,7 +773,7 @@ mod test {
         0xa2, 0x5e, // ldx #$5e
         0x8e, 0xe9, 0x70, // stx $70e9
         0xa0, 0x05, // ldy #$05
-        0x39, 0xe4, 0x70, // lda $70e4,Y
+        0x39, 0xe4, 0x70, // and $70e4,Y
         0x00
     ])]
     fn and(mut cpu: CPU, #[case] program: Vec<u8>) {
