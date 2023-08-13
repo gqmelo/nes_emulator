@@ -138,7 +138,7 @@ impl CPU {
                 "ROR" => self.ror(&opcode.mode),
                 // "RTI" => self.rti(&opcode.mode),
                 "RTS" => self.rts(),
-                // "SBC" => self.sbc(&opcode.mode),
+                "SBC" => self.sbc(&opcode.mode),
                 "SEC" => self.set_status_flag(StatusFlag::Carry),
                 "SED" => self.set_status_flag(StatusFlag::Decimal),
                 "SEI" => self.set_status_flag(StatusFlag::InterruptDisable),
@@ -167,6 +167,12 @@ impl CPU {
         let addr = self.get_operand_address(mode);
         let value = self.mem_read(addr);
         self.add_to_register_a(value);
+    }
+
+    fn sbc(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.add_to_register_a(value.wrapping_neg().wrapping_sub(1));
     }
 
     /// note: ignoring decimal mode
@@ -735,6 +741,148 @@ mod test {
         cpu.load(vec![
             0xa9, 0x80, // lda #$80
             0x69, 0xff, // adc #$ff
+        ]);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x7f);
+        assert_eq!(cpu.status, 0b0100_0001);
+    }
+
+    #[rstest]
+    #[case(vec![
+        0x38, // sec
+        0xa9, 0x70, // lda #$70
+        0xe9, 0x09, // sbc #$09
+    ])]
+    #[case(vec![
+        0xa9, 0x71, // lda #$71
+        0xe9, 0x09, // sbc #$09
+    ])]
+    #[case(vec![
+        0x38, // sec
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x86, 0x10, // stx $10
+        0xe5, 0x10, // sbc $10
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x71, // lda #$71
+        0xa2, 0x09, // ldx #$09
+        0x86, 0x10, // stx $10
+        0xe5, 0x10, // sbc $10
+        0x00
+    ])]
+    #[case(vec![
+        0x38, // sec
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x86, 0x15, // stx $15
+        0xa2, 0x05, // ldx #$05
+        0xf5, 0x10, // sbc $10,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x71, // lda #$71
+        0xa2, 0x09, // ldx #$09
+        0x86, 0x15, // stx $15
+        0xa2, 0x05, // ldx #$05
+        0xf5, 0x10, // sbc $10,X
+        0x00
+    ])]
+    #[case(vec![
+        0x38, // sec
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x8e, 0xe4, 0x70, // stx $70e4
+        0xed, 0xe4, 0x70, // sbc $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x71, // lda #$71
+        0xa2, 0x09, // ldx #$09
+        0x8e, 0xe4, 0x70, // stx $70e4
+        0xed, 0xe4, 0x70, // sbc $70e4
+        0x00
+    ])]
+    #[case(vec![
+        0x38, // sec
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa2, 0x05, // ldx #$05
+        0xfd, 0xe4, 0x70, // sbc $70e4,X
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x71, // lda #$71
+        0xa2, 0x09, // ldx #$09
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa2, 0x05, // ldx #$05
+        0xfd, 0xe4, 0x70, // sbc $70e4,X
+        0x00
+    ])]
+    #[case(vec![
+        0x38, // sec
+        0xa9, 0x70, // lda #$70
+        0xa2, 0x09, // ldx #$09
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa0, 0x05, // ldy #$05
+        0xf9, 0xe4, 0x70, // sbc $70e4,Y
+        0x00
+    ])]
+    #[case(vec![
+        0xa9, 0x71, // lda #$71
+        0xa2, 0x09, // ldx #$09
+        0x8e, 0xe9, 0x70, // stx $70e9
+        0xa0, 0x05, // ldy #$05
+        0xf9, 0xe4, 0x70, // sbc $70e4,Y
+        0x00
+    ])]
+    fn sbc(mut cpu: CPU, #[case] program: Vec<u8>) {
+        cpu.load(program);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x67);
+        assert_eq!(cpu.status, 0b0000_0001);
+    }
+
+    #[rstest]
+    fn sbc_indirect_x(mut cpu: CPU) {
+        cpu.load(vec![
+            0x38, // sec
+            0xe1, 0x01, // sbc ($01,X)
+            0x00,
+        ]);
+        cpu.register_a = 0x70;
+        cpu.register_x = 0x01;
+        cpu.mem_write_u16(0x0002, 0x70e4);
+        cpu.mem_write(0x70e4, 0x09);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x67);
+        assert_eq!(cpu.status, 0b0000_0001);
+    }
+
+    #[rstest]
+    fn sbc_indirect_y(mut cpu: CPU) {
+        cpu.load(vec![
+            0x38, // sec
+            0xf1, 0x02, // sbc ($02),Y
+            0x00,
+        ]);
+        cpu.register_a = 0x70;
+        cpu.register_y = 0x01;
+        cpu.mem_write_u16(0x02, 0x70e4);
+        cpu.mem_write(0x70e5, 0x09);
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x67);
+        assert_eq!(cpu.status, 0b0000_0001);
+    }
+
+    #[rstest]
+    fn sbc_overflow(mut cpu: CPU) {
+        cpu.load(vec![
+            0x38, // sec
+            0xa9, 0x80, // lda #$80
+            0xe9, 0x01, // sbc #$01
         ]);
         cpu.run();
         assert_eq!(cpu.register_a, 0x7f);
