@@ -197,6 +197,8 @@ lazy_static! {
         OpCode::new(0x84, "STY", 3, AddressingMode::ZeroPage),
         OpCode::new(0x94, "STY", 4, AddressingMode::ZeroPageX),
         OpCode::new(0x8c, "STY", 4, AddressingMode::Absolute),
+        // RTI
+        OpCode::new(0x40, "RTI", 6, AddressingMode::NoneAddressing),
         //
         OpCode::new(0xaa, "TAX", 2, AddressingMode::NoneAddressing),
         OpCode::new(0xa8, "TAY", 2, AddressingMode::NoneAddressing),

@@ -105,7 +105,7 @@ impl CPU {
                 "BMI" => self.branch_status_flag_set(StatusFlag::Negative),
                 "BNE" => self.branch_status_flag_clear(StatusFlag::Zero),
                 "BPL" => self.branch_status_flag_clear(StatusFlag::Negative),
-                "BRK" => return, // TODO: http://www.obelisk.me.uk/6502/reference.html#BRK
+                "BRK" => return,
                 "BVC" => self.branch_status_flag_clear(StatusFlag::Overflow),
                 "BVS" => self.branch_status_flag_set(StatusFlag::Overflow),
                 "CLC" => self.clear_status_flag(StatusFlag::Carry),
@@ -136,7 +136,7 @@ impl CPU {
                 "PLP" => self.plp(),
                 "ROL" => self.rol(&opcode.mode),
                 "ROR" => self.ror(&opcode.mode),
-                // "RTI" => self.rti(&opcode.mode),
+                "RTI" => self.rti(),
                 "RTS" => self.rts(),
                 "SBC" => self.sbc(&opcode.mode),
                 "SEC" => self.set_status_flag(StatusFlag::Carry),
@@ -158,6 +158,7 @@ impl CPU {
                 "JMP" => {}
                 "JSR" => {}
                 "RTS" => {}
+                "RTI" => {}
                 _ => self.program_counter += self.get_program_counter_increment(&opcode.mode),
             };
         }
@@ -353,7 +354,7 @@ impl CPU {
 
     fn jsr(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
-        let return_addr = self.program_counter + self.get_program_counter_increment(&mode);
+        let return_addr = self.program_counter + self.get_program_counter_increment(&mode) - 1;
         self.push_to_stack(((return_addr & 0xFF00) >> 8).try_into().unwrap());
         self.push_to_stack((return_addr & 0x00FF).try_into().unwrap());
         self.program_counter = addr;
@@ -473,11 +474,19 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn rts(&mut self) {
+    fn rti(&mut self) {
         let low_byte = self.pop_from_stack();
         let high_byte = self.pop_from_stack();
         let return_addr = ((high_byte as u16) << 8) | low_byte as u16;
         self.program_counter = return_addr;
+        self.status = self.pop_from_stack();
+    }
+
+    fn rts(&mut self) {
+        let low_byte = self.pop_from_stack();
+        let high_byte = self.pop_from_stack();
+        let return_addr = ((high_byte as u16) << 8) | low_byte as u16;
+        self.program_counter = return_addr + 1;
     }
 
     fn pha(&mut self) {
@@ -2066,6 +2075,30 @@ mod test {
         cpu.run();
         assert_eq!(cpu.stack_pointer, 0xfe);
         assert_eq!(cpu.mem_read(0x01ff), 0b1101_0010);
+        assert_eq!(cpu.status, 0b1101_0010);
+    }
+
+    #[rstest]
+    fn rti(mut cpu: CPU) {
+        cpu.load(vec![
+            0x08, // php
+            0xa9, 0x80, // lda #$80
+            0x48, // pha
+            0xa9, 0x0f, // lda #$0f
+            0x48, // pha
+            0x18, // clc
+            0xd8, // cld
+            0x58, // cli
+            0xb8, // clv
+            0xa2, 0x05, // ldx #$05
+            0x40, // rti
+            0xe8, // inx
+            0x00,
+        ]);
+        cpu.status = 0b1101_0010;
+        cpu.run();
+        assert_eq!(cpu.stack_pointer, 0xff);
+        assert_eq!(cpu.register_x, 0x05);
         assert_eq!(cpu.status, 0b1101_0010);
     }
 
