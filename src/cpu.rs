@@ -98,16 +98,16 @@ impl CPU {
                 "ADC" => self.adc(&opcode.mode),
                 "AND" => self.and(&opcode.mode),
                 "ASL" => self.asl(&opcode.mode),
-                "BCC" => self.branch_status_flag_clear(StatusFlag::Carry),
-                "BCS" => self.branch_status_flag_set(StatusFlag::Carry),
-                "BEQ" => self.branch_status_flag_set(StatusFlag::Zero),
+                "BCC" => self.branch(!self.is_status_flag_set(StatusFlag::Carry)),
+                "BCS" => self.branch(self.is_status_flag_set(StatusFlag::Carry)),
+                "BEQ" => self.branch(self.is_status_flag_set(StatusFlag::Zero)),
                 "BIT" => self.bit(&opcode.mode),
-                "BMI" => self.branch_status_flag_set(StatusFlag::Negative),
-                "BNE" => self.branch_status_flag_clear(StatusFlag::Zero),
-                "BPL" => self.branch_status_flag_clear(StatusFlag::Negative),
+                "BMI" => self.branch(self.is_status_flag_set(StatusFlag::Negative)),
+                "BNE" => self.branch(!self.is_status_flag_set(StatusFlag::Zero)),
+                "BPL" => self.branch(!self.is_status_flag_set(StatusFlag::Negative)),
                 "BRK" => return,
-                "BVC" => self.branch_status_flag_clear(StatusFlag::Overflow),
-                "BVS" => self.branch_status_flag_set(StatusFlag::Overflow),
+                "BVC" => self.branch(!self.is_status_flag_set(StatusFlag::Overflow)),
+                "BVS" => self.branch(self.is_status_flag_set(StatusFlag::Overflow)),
                 "CLC" => self.clear_status_flag(StatusFlag::Carry),
                 "CLD" => self.clear_status_flag(StatusFlag::Decimal),
                 "CLI" => self.clear_status_flag(StatusFlag::InterruptDisable),
@@ -159,6 +159,14 @@ impl CPU {
                 "JSR" => {}
                 "RTS" => {}
                 "RTI" => {}
+                "BCC" => {}
+                "BCS" => {}
+                "BEQ" => {}
+                "BMI" => {}
+                "BNE" => {}
+                "BPL" => {}
+                "BVC" => {}
+                "BVS" => {}
                 _ => self.program_counter += self.get_program_counter_increment(&opcode.mode),
             };
         }
@@ -213,31 +221,16 @@ impl CPU {
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn branch_status_flag_clear(&mut self, status_flag: StatusFlag) {
-        let addr = self.get_operand_address(&AddressingMode::Immediate);
-        let value = self.mem_read(addr);
-        let mask = 0b0000_0001 << status_flag as u8;
-        if self.status & mask == 0 {
-            if value > 0xf0 {
-                let offset = 0xff - value;
-                self.program_counter -= offset as u16;
-            } else {
-                self.program_counter += value as u16;
-            }
-        }
-    }
-
-    fn branch_status_flag_set(&mut self, status_flag: StatusFlag) {
-        let addr = self.get_operand_address(&AddressingMode::Immediate);
-        let value = self.mem_read(addr);
-        let mask = 0b0000_0001 << status_flag as u8;
-        if self.status & mask != 0 {
-            if value > 0xf0 {
-                let offset = 0xff - value;
-                self.program_counter -= offset as u16;
-            } else {
-                self.program_counter += value as u16;
-            }
+    fn branch(&mut self, condition: bool) {
+        if condition {
+            let addr = self.get_operand_address(&AddressingMode::Immediate);
+            let value = self.mem_read(addr) as i8;
+            self.program_counter = self
+                .program_counter
+                .wrapping_add(1)
+                .wrapping_add(value as u16);
+        } else {
+            self.program_counter += 1;
         }
     }
 
@@ -263,7 +256,7 @@ impl CPU {
         self.status |= mask;
     }
 
-    fn is_status_flag_set(&mut self, status_flag: StatusFlag) -> bool {
+    fn is_status_flag_set(&self, status_flag: StatusFlag) -> bool {
         let mask = 0b0000_0001 << status_flag as u8;
         return self.status & mask != 0;
     }
@@ -1136,7 +1129,7 @@ mod test {
             0xe8, // inx
             0xe8, // inx
             0x4c, 0x0b, 0x80, // jmp $800b
-            branch_instruction, 0xf7, // Goes back 8 bytes (6 bytes before instruction addr)
+            branch_instruction, 0xf8, // Goes back 8 bytes (6 bytes before instruction addr)
             0x00,
         ];
         cpu.load(program);
