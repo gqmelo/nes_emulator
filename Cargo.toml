@@ -8,6 +8,8 @@ edition = "2018"
 
 [dependencies]
 lazy_static = "1.4.0"
+sdl2 = "0.34.0"
+rand = "=0.7.3"
 
 [dev-dependencies]
 rstest = "0.18.1"

@@ -36,10 +36,11 @@ pub struct CPU {
     pub status: u8,
     pub program_counter: u16,
     memory: [u8; 0xFFFF],
+    program_start_addr: u16,
 }
 
 impl CPU {
-    pub fn new() -> Self {
+    pub fn new(program_start_addr: u16) -> Self {
         CPU {
             register_a: 0,
             register_x: 0,
@@ -48,6 +49,7 @@ impl CPU {
             status: 0,
             program_counter: 0,
             memory: [0; 0xFFFF],
+            program_start_addr: program_start_addr,
         }
     }
 
@@ -57,8 +59,9 @@ impl CPU {
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
-        self.memory[0x8000..(0x8000 + program.len())].copy_from_slice(&program[..]);
-        self.mem_write_u16(0xFFFC, 0x8000);
+        let start_addr = self.program_start_addr as usize;
+        self.memory[start_addr..(start_addr + program.len())].copy_from_slice(&program[..]);
+        self.mem_write_u16(0xFFFC, self.program_start_addr);
         self.reset();
     }
 
@@ -72,8 +75,17 @@ impl CPU {
     }
 
     pub fn run(&mut self) {
+        self.run_with_callback(|_| {});
+    }
+
+    pub fn run_with_callback<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut CPU),
+    {
         let ref opcodes = *opcodes::OPCODES_MAP;
         loop {
+            callback(self);
+
             let code = self.mem_read(self.program_counter);
 
             let opcode = opcodes
@@ -612,19 +624,19 @@ impl CPU {
         }
     }
 
-    fn mem_read(&self, addr: u16) -> u8 {
+    pub fn mem_read(&self, addr: u16) -> u8 {
         self.memory[addr as usize]
     }
 
-    fn mem_read_u16(&self, addr: u16) -> u16 {
+    pub fn mem_read_u16(&self, addr: u16) -> u16 {
         u16::from_le_bytes([self.memory[addr as usize], self.memory[(addr + 1) as usize]])
     }
 
-    fn mem_write(&mut self, addr: u16, data: u8) {
+    pub fn mem_write(&mut self, addr: u16, data: u8) {
         self.memory[addr as usize] = data;
     }
 
-    fn mem_write_u16(&mut self, addr: u16, data: u16) {
+    pub fn mem_write_u16(&mut self, addr: u16, data: u16) {
         self.memory[addr as usize..(addr + 2) as usize].copy_from_slice(&data.to_le_bytes());
     }
 
@@ -650,7 +662,7 @@ mod test {
 
     #[fixture]
     fn cpu() -> CPU {
-        CPU::new()
+        CPU::new(0x8000)
     }
 
     #[rstest]
