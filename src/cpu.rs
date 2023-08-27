@@ -1,5 +1,7 @@
 use std::convert::TryInto;
 
+use crate::bus::Bus;
+use crate::bus::Mem;
 use crate::opcodes;
 
 #[derive(Debug)]
@@ -35,8 +37,26 @@ pub struct CPU {
     pub stack_pointer: u8,
     pub status: u8,
     pub program_counter: u16,
-    memory: [u8; 0xFFFF],
     program_start_addr: u16,
+    bus: Bus,
+}
+
+impl Mem for CPU {
+    fn mem_read(&self, addr: u16) -> u8 {
+        self.bus.mem_read(addr)
+    }
+
+    fn mem_write(&mut self, addr: u16, data: u8) {
+        self.bus.mem_write(addr, data)
+    }
+
+    fn mem_read_u16(&self, addr: u16) -> u16 {
+        self.bus.mem_read_u16(addr)
+    }
+
+    fn mem_write_u16(&mut self, addr: u16, data: u16) {
+        self.bus.mem_write_u16(addr, data)
+    }
 }
 
 impl CPU {
@@ -48,8 +68,8 @@ impl CPU {
             stack_pointer: 0xFF,
             status: 0,
             program_counter: 0,
-            memory: [0; 0xFFFF],
             program_start_addr: program_start_addr,
+            bus: Bus::new(),
         }
     }
 
@@ -59,8 +79,9 @@ impl CPU {
     }
 
     pub fn load(&mut self, program: Vec<u8>) {
-        let start_addr = self.program_start_addr as usize;
-        self.memory[start_addr..(start_addr + program.len())].copy_from_slice(&program[..]);
+        for i in 0..(program.len() as u16) {
+            self.mem_write(self.program_start_addr + i, program[i as usize]);
+        }
         self.mem_write_u16(0xFFFC, self.program_start_addr);
         self.reset();
     }
@@ -71,7 +92,8 @@ impl CPU {
         self.register_y = 0;
         self.stack_pointer = 0xFF;
         self.status = 0;
-        self.program_counter = self.mem_read_u16(0xFFFC)
+        // self.program_counter = self.mem_read_u16(0xFFFC)
+        self.program_counter = self.program_start_addr
     }
 
     pub fn run(&mut self) {
@@ -186,6 +208,7 @@ impl CPU {
 
     fn adc(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
+        println!("{:#04x}", addr);
         let value = self.mem_read(addr);
         self.add_to_register_a(value);
     }
@@ -624,22 +647,6 @@ impl CPU {
         }
     }
 
-    pub fn mem_read(&self, addr: u16) -> u8 {
-        self.memory[addr as usize]
-    }
-
-    pub fn mem_read_u16(&self, addr: u16) -> u16 {
-        u16::from_le_bytes([self.memory[addr as usize], self.memory[(addr + 1) as usize]])
-    }
-
-    pub fn mem_write(&mut self, addr: u16, data: u8) {
-        self.memory[addr as usize] = data;
-    }
-
-    pub fn mem_write_u16(&mut self, addr: u16, data: u16) {
-        self.memory[addr as usize..(addr + 2) as usize].copy_from_slice(&data.to_le_bytes());
-    }
-
     fn update_zero_and_negative_flags(&mut self, result: u8) {
         if result == 0 {
             self.set_status_flag(StatusFlag::Zero)
@@ -662,7 +669,7 @@ mod test {
 
     #[fixture]
     fn cpu() -> CPU {
-        CPU::new(0x8000)
+        CPU::new(0x0600)
     }
 
     #[rstest]
@@ -688,24 +695,24 @@ mod test {
     #[case(vec![
         0xa9, 0x70, // lda #$70
         0xa2, 0x09, // ldx #$09
-        0x8e, 0xe4, 0x70, // stx $70e4
-        0x6d, 0xe4, 0x70, // adc $70e4
+        0x8e, 0xe4, 0x19, // stx $19e4
+        0x6d, 0xe4, 0x19, // adc $19e4
         0x00
     ])]
     #[case(vec![
         0xa9, 0x70, // lda #$70
         0xa2, 0x09, // ldx #$09
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa2, 0x05, // ldx #$05
-        0x7d, 0xe4, 0x70, // adc $70e4,X
+        0x7d, 0xe4, 0x19, // adc $19e4,X
         0x00
     ])]
     #[case(vec![
         0xa9, 0x70, // lda #$70
         0xa2, 0x09, // ldx #$09
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa0, 0x05, // ldy #$05
-        0x79, 0xe4, 0x70, // adc $70e4,Y
+        0x79, 0xe4, 0x19, // adc $19e4,Y
         0x00
     ])]
     fn adc(mut cpu: CPU, #[case] program: Vec<u8>) {
@@ -720,8 +727,8 @@ mod test {
         cpu.load(vec![0x61, 0x01, 0x00]);
         cpu.register_a = 0x70;
         cpu.register_x = 0x01;
-        cpu.mem_write_u16(0x0002, 0x70e4);
-        cpu.mem_write(0x70e4, 0x09);
+        cpu.mem_write_u16(0x0002, 0x19e4);
+        cpu.mem_write(0x19e4, 0x09);
         cpu.run();
         assert_eq!(cpu.register_a, 0x79);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -732,8 +739,8 @@ mod test {
         cpu.load(vec![0x71, 0x02, 0x00]);
         cpu.register_a = 0x70;
         cpu.register_y = 0x01;
-        cpu.mem_write_u16(0x02, 0x70e4);
-        cpu.mem_write(0x70e5, 0x09);
+        cpu.mem_write_u16(0x02, 0x19e4);
+        cpu.mem_write(0x19e5, 0x09);
         cpu.run();
         assert_eq!(cpu.register_a, 0x79);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -807,49 +814,49 @@ mod test {
         0x38, // sec
         0xa9, 0x70, // lda #$70
         0xa2, 0x09, // ldx #$09
-        0x8e, 0xe4, 0x70, // stx $70e4
-        0xed, 0xe4, 0x70, // sbc $70e4
+        0x8e, 0xe4, 0x19, // stx $19e4
+        0xed, 0xe4, 0x19, // sbc $19e4
         0x00
     ])]
     #[case(vec![
         0xa9, 0x71, // lda #$71
         0xa2, 0x09, // ldx #$09
-        0x8e, 0xe4, 0x70, // stx $70e4
-        0xed, 0xe4, 0x70, // sbc $70e4
+        0x8e, 0xe4, 0x19, // stx $19e4
+        0xed, 0xe4, 0x19, // sbc $19e4
         0x00
     ])]
     #[case(vec![
         0x38, // sec
         0xa9, 0x70, // lda #$70
         0xa2, 0x09, // ldx #$09
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa2, 0x05, // ldx #$05
-        0xfd, 0xe4, 0x70, // sbc $70e4,X
+        0xfd, 0xe4, 0x19, // sbc $19e4,X
         0x00
     ])]
     #[case(vec![
         0xa9, 0x71, // lda #$71
         0xa2, 0x09, // ldx #$09
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa2, 0x05, // ldx #$05
-        0xfd, 0xe4, 0x70, // sbc $70e4,X
+        0xfd, 0xe4, 0x19, // sbc $19e4,X
         0x00
     ])]
     #[case(vec![
         0x38, // sec
         0xa9, 0x70, // lda #$70
         0xa2, 0x09, // ldx #$09
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa0, 0x05, // ldy #$05
-        0xf9, 0xe4, 0x70, // sbc $70e4,Y
+        0xf9, 0xe4, 0x19, // sbc $19e4,Y
         0x00
     ])]
     #[case(vec![
         0xa9, 0x71, // lda #$71
         0xa2, 0x09, // ldx #$09
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa0, 0x05, // ldy #$05
-        0xf9, 0xe4, 0x70, // sbc $70e4,Y
+        0xf9, 0xe4, 0x19, // sbc $19e4,Y
         0x00
     ])]
     fn sbc(mut cpu: CPU, #[case] program: Vec<u8>) {
@@ -868,8 +875,8 @@ mod test {
         ]);
         cpu.register_a = 0x70;
         cpu.register_x = 0x01;
-        cpu.mem_write_u16(0x0002, 0x70e4);
-        cpu.mem_write(0x70e4, 0x09);
+        cpu.mem_write_u16(0x0002, 0x19e4);
+        cpu.mem_write(0x19e4, 0x09);
         cpu.run();
         assert_eq!(cpu.register_a, 0x67);
         assert_eq!(cpu.status, 0b0000_0001);
@@ -884,8 +891,8 @@ mod test {
         ]);
         cpu.register_a = 0x70;
         cpu.register_y = 0x01;
-        cpu.mem_write_u16(0x02, 0x70e4);
-        cpu.mem_write(0x70e5, 0x09);
+        cpu.mem_write_u16(0x02, 0x19e4);
+        cpu.mem_write(0x19e5, 0x09);
         cpu.run();
         assert_eq!(cpu.register_a, 0x67);
         assert_eq!(cpu.status, 0b0000_0001);
@@ -920,22 +927,22 @@ mod test {
     ])]
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
-        0x8e, 0xe4, 0x70, // stx $70e4
-        0x2d, 0xe4, 0x70, // and $70e4
+        0x8e, 0xe4, 0x19, // stx $19e4
+        0x2d, 0xe4, 0x19, // and $19e4
         0x00
     ])]
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa2, 0x05, // ldx #$05
-        0x3d, 0xe4, 0x70, // and $70e4,X
+        0x3d, 0xe4, 0x19, // and $19e4,X
         0x00
     ])]
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa0, 0x05, // ldy #$05
-        0x39, 0xe4, 0x70, // and $70e4,Y
+        0x39, 0xe4, 0x19, // and $19e4,Y
         0x00
     ])]
     fn and(mut cpu: CPU, #[case] program: Vec<u8>) {
@@ -951,8 +958,8 @@ mod test {
         cpu.load(vec![0x21, 0x01, 0x00]);
         cpu.register_a = 0x97;
         cpu.register_x = 0x01;
-        cpu.mem_write_u16(0x0002, 0x70e4);
-        cpu.mem_write(0x70e4, 0x5e);
+        cpu.mem_write_u16(0x0002, 0x19e4);
+        cpu.mem_write(0x19e4, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x16);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -963,8 +970,8 @@ mod test {
         cpu.load(vec![0x31, 0x02, 0x00]);
         cpu.register_a = 0x97;
         cpu.register_y = 0x01;
-        cpu.mem_write_u16(0x02, 0x70e4);
-        cpu.mem_write(0x70e5, 0x5e);
+        cpu.mem_write_u16(0x02, 0x19e4);
+        cpu.mem_write(0x19e5, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x16);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -1075,8 +1082,8 @@ mod test {
         #[case] memory_value: u8,
         #[case] expected_status: u8,
     ) {
-        cpu.load(vec![0x2c, 0xe2, 0x70, 0x00]);
-        cpu.mem_write(0x70e2, memory_value);
+        cpu.load(vec![0x2c, 0xe2, 0x19, 0x00]);
+        cpu.mem_write(0x19e2, memory_value);
         cpu.register_a = register_a;
         cpu.run();
         assert_eq!(cpu.register_a, register_a);
@@ -1136,11 +1143,11 @@ mod test {
     fn branch_backward(mut cpu: CPU, #[case] branch_instruction: u8, #[case] initial_status: u8) {
         #[rustfmt::skip]
         let program = vec![
-            0x4c, 0x09, 0x80, // jmp $8009
+            0x4c, 0x09, 0x06, // jmp $0609
             0xe8, // inx
             0xe8, // inx
             0xe8, // inx
-            0x4c, 0x0b, 0x80, // jmp $800b
+            0x4c, 0x0b, 0x06, // jmp $060b
             branch_instruction, 0xf8, // Goes back 8 bytes (6 bytes before instruction addr)
             0x00,
         ];
@@ -1189,7 +1196,7 @@ mod test {
         #[rustfmt::skip]
         let program = vec![
             0xa2, 0x05, // ldx #$05
-            0x4c, 0x07, 0x80, // jmp $8007
+            0x4c, 0x07, 0x06, // jmp $0607
             0xe8, // inx
             0xe8, // inx
             0xe8, // inx
@@ -1204,14 +1211,14 @@ mod test {
         #[rustfmt::skip]
         let program = vec![
             0xa2, 0x05, // ldx #$05
-            0x6c, 0xe4, 0x70, // jmp ($70e4)
+            0x6c, 0xe4, 0x19, // jmp ($19e4)
             0xe8, // inx
             0xe8, // inx
             0xe8, // inx
             0x00,
         ];
         cpu.load(program);
-        cpu.mem_write_u16(0x70e4, 0x8007);
+        cpu.mem_write_u16(0x19e4, 0x0607);
         cpu.run();
         assert_eq!(cpu.register_x, 0x06);
     }
@@ -1221,8 +1228,8 @@ mod test {
         #[rustfmt::skip]
         let program = vec![
             0xa2, 0x05, // ldx #$05
-            0x20, 0x0b, 0x80, // jsr $800b
-            0x4c, 0x0f, 0x80, // jmp $800f
+            0x20, 0x0b, 0x06, // jsr $060b
+            0x4c, 0x0f, 0x06, // jmp $060f
             0xe8, // inx
             0xe8, // inx
             0xe8, // inx
@@ -1256,23 +1263,23 @@ mod test {
         0x00
     ])]
     #[case(vec![
-        0x8d, 0xe4, 0x70, // sta $70e4
+        0x8d, 0xe4, 0x19, // sta $19e4
         0xa9, 0x05,  // lda #$05
-        0xcd, 0xe4, 0x70, // cmp $70e4
+        0xcd, 0xe4, 0x19, // cmp $19e4
         0x00
     ])]
     #[case(vec![
-        0x8d, 0xe9, 0x70, // sta $70e9
+        0x8d, 0xe9, 0x19, // sta $19e9
         0xa9, 0x05,  // lda #$05
         0xa2, 0x05, // ldx #$05
-        0xdd, 0xe4, 0x70, // cmp $70e4,X
+        0xdd, 0xe4, 0x19, // cmp $19e4,X
         0x00
     ])]
     #[case(vec![
-        0x8d, 0xe9, 0x70, // sta $70e9
+        0x8d, 0xe9, 0x19, // sta $19e9
         0xa9, 0x05,  // lda #$05
         0xa0, 0x05, // ldy #$05
-        0xd9, 0xe4, 0x70, // cmp $70e4,Y
+        0xd9, 0xe4, 0x19, // cmp $19e4,Y
         0x00
     ])]
     #[case(vec![
@@ -1287,9 +1294,9 @@ mod test {
         0x00
     ])]
     #[case(vec![
-        0x8d, 0xe4, 0x70, // sta $70e4
+        0x8d, 0xe4, 0x19, // sta $19e4
         0xa2, 0x05,  // ldx #$05
-        0xec, 0xe4, 0x70, // cmp $70e4
+        0xec, 0xe4, 0x19, // cmp $19e4
         0x00
     ])]
     #[case(vec![
@@ -1304,9 +1311,9 @@ mod test {
         0x00
     ])]
     #[case(vec![
-        0x8d, 0xe4, 0x70, // sta $70e4
+        0x8d, 0xe4, 0x19, // sta $19e4
         0xa0, 0x05,  // ldy #$05
-        0xcc, 0xe4, 0x70, // cpy $70e4
+        0xcc, 0xe4, 0x19, // cpy $19e4
         0x00
     ])]
     fn cmp(
@@ -1348,8 +1355,8 @@ mod test {
         cpu.load(vec![0xc1, 0x01, 0x00]);
         cpu.register_a = 0x05;
         cpu.register_x = 0x01;
-        cpu.mem_write_u16(0x0002, 0x70e4);
-        cpu.mem_write(0x70e4, value_to_compare);
+        cpu.mem_write_u16(0x0002, 0x19e4);
+        cpu.mem_write(0x19e4, value_to_compare);
         cpu.run();
         assert_eq!(cpu.register_a, 0x05);
         assert_eq!(cpu.status, expected_status);
@@ -1369,8 +1376,8 @@ mod test {
         cpu.load(vec![0xd1, 0x02, 0x00]);
         cpu.register_a = 0x05;
         cpu.register_y = 0x01;
-        cpu.mem_write_u16(0x02, 0x70e4);
-        cpu.mem_write(0x70e5, value_to_compare);
+        cpu.mem_write_u16(0x02, 0x19e4);
+        cpu.mem_write(0x19e5, value_to_compare);
         cpu.run();
         assert_eq!(cpu.register_a, 0x05);
         assert_eq!(cpu.status, expected_status);
@@ -1409,17 +1416,17 @@ mod test {
     }
 
     #[rstest]
-    #[case(vec![0xce, 0xe4, 0x70, 0x00])] // dec $70e4
+    #[case(vec![0xce, 0xe4, 0x19, 0x00])] // dec $19e4
     #[case(vec![
         0xa2, 0x02, // ldx #$02
-        0xde, 0xe2, 0x70, // dec $70e2,X
+        0xde, 0xe2, 0x19, // dec $19e2,X
         0x00
     ])]
     fn dec_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.mem_write(0x70e4, 5);
+        cpu.mem_write(0x19e4, 5);
         cpu.run();
-        assert_eq!(cpu.mem_read_u16(0x70e4), 4);
+        assert_eq!(cpu.mem_read_u16(0x19e4), 4);
     }
 
     #[rstest]
@@ -1493,22 +1500,22 @@ mod test {
     ])]
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
-        0x8e, 0xe4, 0x70, // stx $70e4
-        0x4d, 0xe4, 0x70, // eor $70e4
+        0x8e, 0xe4, 0x19, // stx $19e4
+        0x4d, 0xe4, 0x19, // eor $19e4
         0x00
     ])]
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa2, 0x05, // ldx #$05
-        0x5d, 0xe4, 0x70, // eor $70e4,X
+        0x5d, 0xe4, 0x19, // eor $19e4,X
         0x00
     ])]
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa0, 0x05, // ldy #$05
-        0x59, 0xe4, 0x70, // eor $70e4,Y
+        0x59, 0xe4, 0x19, // eor $19e4,Y
         0x00
                                 ])]
     fn eor(mut cpu: CPU, #[case] program: Vec<u8>) {
@@ -1524,8 +1531,8 @@ mod test {
         cpu.load(vec![0x41, 0x01, 0x00]);
         cpu.register_a = 0x67;
         cpu.register_x = 0x01;
-        cpu.mem_write_u16(0x0002, 0x70e4);
-        cpu.mem_write(0x70e4, 0x5e);
+        cpu.mem_write_u16(0x0002, 0x19e4);
+        cpu.mem_write(0x19e4, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x39);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -1536,8 +1543,8 @@ mod test {
         cpu.load(vec![0x51, 0x02, 0x00]);
         cpu.register_a = 0x67;
         cpu.register_y = 0x01;
-        cpu.mem_write_u16(0x02, 0x70e4);
-        cpu.mem_write(0x70e5, 0x5e);
+        cpu.mem_write_u16(0x02, 0x19e4);
+        cpu.mem_write(0x19e5, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x39);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -1577,20 +1584,20 @@ mod test {
     ])]
     #[case(vec![
         0xa2, 0x05, // ldx #$05
-        0x8e, 0xe4, 0x70, // stx $70e4
-        0xad, 0xe4, 0x70, // lda $70e4
+        0x8e, 0xe4, 0x19, // stx $19e4
+        0xad, 0xe4, 0x19, // lda $19e4
         0x00
     ])]
     #[case(vec![
         0xa2, 0x05, // ldx #$05
-        0x8e, 0xe9, 0x70, // stx $70e9
-        0xbd, 0xe4, 0x70, // lda $70e4,X
+        0x8e, 0xe9, 0x19, // stx $19e9
+        0xbd, 0xe4, 0x19, // lda $19e4,X
         0x00
     ])]
     #[case(vec![
         0xa0, 0x05, // ldy #$05
-        0x8c, 0xe9, 0x70, // sty $70e9
-        0xb9, 0xe4, 0x70, // lda $70e4,Y
+        0x8c, 0xe9, 0x19, // sty $19e9
+        0xb9, 0xe4, 0x19, // lda $19e4,Y
         0x00
     ])]
     fn lda(mut cpu: CPU, #[case] program: Vec<u8>) {
@@ -1603,8 +1610,8 @@ mod test {
     fn lda_indirect_x(mut cpu: CPU) {
         cpu.load(vec![0xa1, 0x01, 0x00]);
         cpu.register_x = 0x01;
-        cpu.mem_write_u16(0x0002, 0x70e4);
-        cpu.mem_write(0x70e4, 0x05);
+        cpu.mem_write_u16(0x0002, 0x19e4);
+        cpu.mem_write(0x19e4, 0x05);
         cpu.run();
         assert_eq!(cpu.register_a, 0x05);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -1614,8 +1621,8 @@ mod test {
     fn lda_indirect_y(mut cpu: CPU) {
         cpu.load(vec![0xb1, 0x02, 0x00]);
         cpu.register_y = 0x01;
-        cpu.mem_write_u16(0x02, 0x70e4);
-        cpu.mem_write(0x70e5, 0x05);
+        cpu.mem_write_u16(0x02, 0x19e4);
+        cpu.mem_write(0x19e5, 0x05);
         cpu.run();
         assert_eq!(cpu.register_a, 0x05);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -1650,14 +1657,14 @@ mod test {
     ])]
     #[case(vec![
         0xa9, 0x05, // lda #$05
-        0x8d, 0xe4, 0x70, // sta $70e4
-        0xae, 0xe4, 0x70, // ldx $70e4
+        0x8d, 0xe4, 0x19, // sta $19e4
+        0xae, 0xe4, 0x19, // ldx $19e4
         0x00
     ])]
     #[case(vec![
         0xa0, 0x05, // ldy #$05
-        0x8c, 0xe9, 0x70, // sty $70e9
-        0xbe, 0xe4, 0x70, // ldx $70e4,Y
+        0x8c, 0xe9, 0x19, // sty $19e9
+        0xbe, 0xe4, 0x19, // ldx $19e4,Y
         0x00
     ])]
     fn ldx(mut cpu: CPU, #[case] program: Vec<u8>) {
@@ -1695,14 +1702,14 @@ mod test {
     ])]
     #[case(vec![
         0xa9, 0x05, // lda #$05
-        0x8d, 0xe4, 0x70, // sta $70e4
-        0xac, 0xe4, 0x70, // ldy $70e4
+        0x8d, 0xe4, 0x19, // sta $19e4
+        0xac, 0xe4, 0x19, // ldy $19e4
         0x00
     ])]
     #[case(vec![
         0xa2, 0x05, // ldx #$05
-        0x8e, 0xe9, 0x70, // stx $70e9
-        0xbc, 0xe4, 0x70, // ldy $70e4,Y
+        0x8e, 0xe9, 0x19, // stx $19e9
+        0xbc, 0xe4, 0x19, // ldy $19e4,Y
         0x00
     ])]
     fn ldy(mut cpu: CPU, #[case] program: Vec<u8>) {
@@ -1755,12 +1762,12 @@ mod test {
         0x16, 0x08, // asl $08,X
         0x00
     ], 0x10)]
-    #[case(vec![0x0e, 0xe4, 0x70, 0x00], 0x70e4)] // asl $70e4
+    #[case(vec![0x0e, 0xe4, 0x19, 0x00], 0x19e4)] // asl $19e4
     #[case(vec![
         0xa2, 0x05, // ldx #$05
-        0x1e, 0xe4, 0x70, // asl $70e4,X
+        0x1e, 0xe4, 0x19, // asl $19e4,X
         0x00
-    ], 0x70e9)]
+    ], 0x19e9)]
     fn asl_memory(
         mut cpu: CPU,
         #[case] program: Vec<u8>,
@@ -1817,12 +1824,12 @@ mod test {
         0x56, 0x08, // lsr $08,X
         0x00
     ], 0x10)]
-    #[case(vec![0x4e, 0xe4, 0x70, 0x00], 0x70e4)] // lsr $70e4
+    #[case(vec![0x4e, 0xe4, 0x19, 0x00], 0x19e4)] // lsr $19e4
     #[case(vec![
         0xa2, 0x05, // ldx #$05
-        0x5e, 0xe4, 0x70, // lsr $70e4,X
+        0x5e, 0xe4, 0x19, // lsr $19e4,X
         0x00
-    ], 0x70e9)]
+    ], 0x19e9)]
     fn lsr_memory(
         mut cpu: CPU,
         #[case] program: Vec<u8>,
@@ -1881,12 +1888,12 @@ mod test {
         0x36, 0x08, // rol $08,X
         0x00
     ], 0x10)]
-    #[case(vec![0x2e, 0xe4, 0x70, 0x00], 0x70e4)] // rol $70e4
+    #[case(vec![0x2e, 0xe4, 0x19, 0x00], 0x19e4)] // rol $19e4
     #[case(vec![
         0xa2, 0x05, // ldx #$05
-        0x3e, 0xe4, 0x70, // rol $70e4,X
+        0x3e, 0xe4, 0x19, // rol $19e4,X
         0x00
-    ], 0x70e9)]
+    ], 0x19e9)]
     fn rol_memory(
         mut cpu: CPU,
         #[case] program: Vec<u8>,
@@ -1947,12 +1954,12 @@ mod test {
         0x76, 0x08, // ror $08,X
         0x00
     ], 0x10)]
-    #[case(vec![0x6e, 0xe4, 0x70, 0x00], 0x70e4)] // ror $70e4
+    #[case(vec![0x6e, 0xe4, 0x19, 0x00], 0x19e4)] // ror $19e4
     #[case(vec![
         0xa2, 0x05, // ldx #$05
-        0x7e, 0xe4, 0x70, // ror $70e4,X
+        0x7e, 0xe4, 0x19, // ror $19e4,X
         0x00
-    ], 0x70e9)]
+    ], 0x19e9)]
     fn ror_memory(
         mut cpu: CPU,
         #[case] program: Vec<u8>,
@@ -1997,22 +2004,22 @@ mod test {
     ])]
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
-        0x8e, 0xe4, 0x70, // stx $70e4
-        0x0d, 0xe4, 0x70, // ora $70e4
+        0x8e, 0xe4, 0x19, // stx $19e4
+        0x0d, 0xe4, 0x19, // ora $19e4
         0x00
     ])]
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa2, 0x05, // ldx #$05
-        0x1d, 0xe4, 0x70, // ora $70e4,X
+        0x1d, 0xe4, 0x19, // ora $19e4,X
         0x00
     ])]
     #[case(vec![
         0xa2, 0x5e, // ldx #$5e
-        0x8e, 0xe9, 0x70, // stx $70e9
+        0x8e, 0xe9, 0x19, // stx $19e9
         0xa0, 0x05, // ldy #$05
-        0x19, 0xe4, 0x70, // ora $70e4,Y
+        0x19, 0xe4, 0x19, // ora $19e4,Y
         0x00
     ])]
     fn ora(mut cpu: CPU, #[case] program: Vec<u8>) {
@@ -2028,8 +2035,8 @@ mod test {
         cpu.load(vec![0x01, 0x01, 0x00]);
         cpu.register_a = 0x67;
         cpu.register_x = 0x01;
-        cpu.mem_write_u16(0x0002, 0x70e4);
-        cpu.mem_write(0x70e4, 0x5e);
+        cpu.mem_write_u16(0x0002, 0x19e4);
+        cpu.mem_write(0x19e4, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x7f);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -2040,8 +2047,8 @@ mod test {
         cpu.load(vec![0x11, 0x02, 0x00]);
         cpu.register_a = 0x67;
         cpu.register_y = 0x01;
-        cpu.mem_write_u16(0x02, 0x70e4);
-        cpu.mem_write(0x70e5, 0x5e);
+        cpu.mem_write_u16(0x02, 0x19e4);
+        cpu.mem_write(0x19e5, 0x5e);
         cpu.run();
         assert_eq!(cpu.register_a, 0x7f);
         assert_eq!(cpu.status, 0b0000_0000);
@@ -2165,22 +2172,22 @@ mod test {
     }
 
     #[rstest]
-    #[case(vec![0x8d, 0xe4, 0x70, 0x00])] // sta $70e4
+    #[case(vec![0x8d, 0xe4, 0x19, 0x00])] // sta $19e4
     #[case(vec![
         0xa2, 0x02, // ldx #$02
-        0x9d, 0xe2, 0x70, // // sta $70e4,X
+        0x9d, 0xe2, 0x19, // // sta $19e4,X
         0x00
     ])]
     #[case(vec![
         0xa0, 0x02, // ldy #$02
-        0x99, 0xe2, 0x70, // // sta $70e4,Y
+        0x99, 0xe2, 0x19, // // sta $19e4,Y
         0x00
     ])]
     fn sta_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
         cpu.register_a = 5;
         cpu.run();
-        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
+        assert_eq!(cpu.mem_read_u16(0x19e4), 5);
     }
 
     #[rstest]
@@ -2188,10 +2195,10 @@ mod test {
         cpu.load(vec![0x81, 0x01, 0x00]);
         cpu.register_a = 5;
         cpu.register_x = 0x01;
-        cpu.mem_write_u16(0x0002, 0x70e4);
+        cpu.mem_write_u16(0x0002, 0x19e4);
         cpu.run();
 
-        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
+        assert_eq!(cpu.mem_read_u16(0x19e4), 5);
         assert_eq!(cpu.status, 0b0000_0000);
     }
 
@@ -2200,10 +2207,10 @@ mod test {
         cpu.load(vec![0x91, 0x02, 0x00]);
         cpu.register_a = 5;
         cpu.register_y = 0x01;
-        cpu.mem_write_u16(0x02, 0x70e3);
+        cpu.mem_write_u16(0x02, 0x19e3);
         cpu.run();
 
-        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
+        assert_eq!(cpu.mem_read_u16(0x19e4), 5);
         assert_eq!(cpu.status, 0b0000_0000);
     }
 
@@ -2223,10 +2230,10 @@ mod test {
 
     #[rstest]
     fn stx_absolute(mut cpu: CPU) {
-        cpu.load(vec![0x8e, 0xe4, 0x70, 0x00]); // stx $70e4
+        cpu.load(vec![0x8e, 0xe4, 0x19, 0x00]); // stx $19e4
         cpu.register_x = 5;
         cpu.run();
-        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
+        assert_eq!(cpu.mem_read_u16(0x19e4), 5);
     }
 
     #[rstest]
@@ -2245,10 +2252,10 @@ mod test {
 
     #[rstest]
     fn sty_absolute(mut cpu: CPU) {
-        cpu.load(vec![0x8c, 0xe4, 0x70, 0x00]); // sty $70e4
+        cpu.load(vec![0x8c, 0xe4, 0x19, 0x00]); // sty $19e4
         cpu.register_y = 5;
         cpu.run();
-        assert_eq!(cpu.mem_read_u16(0x70e4), 5);
+        assert_eq!(cpu.mem_read_u16(0x19e4), 5);
     }
 
     #[rstest]
@@ -2398,17 +2405,17 @@ mod test {
     }
 
     #[rstest]
-    #[case(vec![0xee, 0xe4, 0x70, 0x00])] // inc $70e4
+    #[case(vec![0xee, 0xe4, 0x19, 0x00])] // inc $19e4
     #[case(vec![
         0xa2, 0x02, // ldx #$02
-        0xfe, 0xe2, 0x70, // inc $70e4,X
+        0xfe, 0xe2, 0x19, // inc $19e4,X
         0x00
     ])]
     fn inc_absolute(mut cpu: CPU, #[case] program: Vec<u8>) {
         cpu.load(program);
-        cpu.mem_write(0x70e4, 5);
+        cpu.mem_write(0x19e4, 5);
         cpu.run();
-        assert_eq!(cpu.mem_read_u16(0x70e4), 6);
+        assert_eq!(cpu.mem_read_u16(0x19e4), 6);
     }
 
     #[rstest]
@@ -2473,7 +2480,7 @@ mod test {
         cpu.register_y = 0xfe;
         cpu.status = 0b1101_0010;
         cpu.run();
-        assert_eq!(cpu.program_counter, 0x8002);
+        assert_eq!(cpu.program_counter, 0x0602);
         assert_eq!(cpu.register_a, 0x05);
         assert_eq!(cpu.register_x, 0x1f);
         assert_eq!(cpu.register_y, 0xfe);
