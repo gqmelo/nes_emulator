@@ -60,7 +60,7 @@ impl Mem for CPU {
 }
 
 impl CPU {
-    pub fn new(program_start_addr: u16) -> Self {
+    pub fn new(bus: Bus, program_start_addr: u16) -> Self {
         CPU {
             register_a: 0,
             register_x: 0,
@@ -69,7 +69,7 @@ impl CPU {
             status: 0,
             program_counter: 0,
             program_start_addr: program_start_addr,
-            bus: Bus::new(),
+            bus: bus,
         }
     }
 
@@ -664,12 +664,20 @@ impl CPU {
 
 #[cfg(test)]
 mod test {
+    use crate::cartridge::Rom;
+
     use super::*;
     use rstest::*;
 
     #[fixture]
     fn cpu() -> CPU {
-        CPU::new(0x0600)
+        let raw = vec![
+            0x4E, 0x45, 0x53, 0x1A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        ];
+        let rom = Rom::new(&raw);
+        let bus = Bus::new(rom.unwrap());
+        CPU::new(bus, 0x0600)
     }
 
     #[rstest]

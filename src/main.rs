@@ -1,8 +1,15 @@
 pub mod bus;
+pub mod cartridge;
 pub mod cpu;
 pub mod opcodes;
 
+use std::fs::File;
+use std::io::Read;
+
+use bus::Bus;
 use bus::Mem;
+use cartridge::Rom;
+use clap::Parser;
 use cpu::CPU;
 use rand::Rng;
 use sdl2::event::Event;
@@ -14,7 +21,15 @@ use sdl2::EventPump;
 #[macro_use]
 extern crate lazy_static;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(short, long)]
+    rom_file: Option<std::path::PathBuf>,
+}
+
 fn main() {
+    let args = Args::parse();
     let game_code = vec![
         0x20, 0x06, 0x06, 0x20, 0x38, 0x06, 0x20, 0x0d, 0x06, 0x20, 0x2a, 0x06, 0x60, 0xa9, 0x02,
         0x85, 0x02, 0xa9, 0x04, 0x85, 0x03, 0xa9, 0x11, 0x85, 0x10, 0xa9, 0x10, 0x85, 0x12, 0xa9,
@@ -57,8 +72,30 @@ fn main() {
         .create_texture_target(PixelFormatEnum::RGB24, 32, 32)
         .unwrap();
 
-    //load the game
-    let mut cpu = CPU::new(0x0600);
+    let bus = match args.rom_file {
+        Some(rom_file) => {
+            let mut file = File::open(rom_file.clone()).unwrap();
+            let mut raw = Vec::new();
+            match file.read_to_end(&mut raw) {
+                Ok(_) => {
+                    let rom = Rom::new(&raw);
+                    Bus::new(rom.unwrap())
+                }
+                Err(_) => {
+                    panic!("Could not read file {}", rom_file.display())
+                }
+            }
+        }
+        None => {
+            let raw = vec![
+                0x4E, 0x45, 0x53, 0x1A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00,
+            ];
+            let rom = Rom::new(&raw);
+            Bus::new(rom.unwrap())
+        }
+    };
+    let mut cpu = CPU::new(bus, 0x0600);
     cpu.load(game_code);
 
     let mut screen_state = [0 as u8; 32 * 3 * 32];

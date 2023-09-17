@@ -1,7 +1,11 @@
+use crate::cartridge::Rom;
+
 const RAM_START: u16 = 0x0000;
 const RAM_MIRRORS_END: u16 = 0x1FFF;
 const PPU_REGISTERS: u16 = 0x2000;
 const PPU_REGISTERS_MIRRORS_END: u16 = 0x3FFF;
+const PGR_ROM_START: u16 = 0x8000;
+const PGR_ROM_END: u16 = 0xFFFF;
 
 pub trait Mem {
     fn mem_read(&self, addr: u16) -> u8;
@@ -12,12 +16,14 @@ pub trait Mem {
 
 pub struct Bus {
     cpu_vram: [u8; 2048],
+    rom: Rom,
 }
 
 impl Bus {
-    pub fn new() -> Self {
+    pub fn new(rom: Rom) -> Self {
         Bus {
             cpu_vram: [0; 2048],
+            rom: rom,
         }
     }
 }
@@ -32,6 +38,13 @@ impl Mem for Bus {
             PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END => {
                 let _mirror_down_addr = addr & 0b0000_0100_0000_0111;
                 todo!("PPU is not supported yet");
+            }
+            PGR_ROM_START..=PGR_ROM_END => {
+                let mut pgr_rom_addr = (addr - 0x8000) as usize;
+                if self.rom.pgr_rom.len() == 0x4000 && pgr_rom_addr >= 0x4000 {
+                    pgr_rom_addr -= 0x4000;
+                }
+                self.rom.pgr_rom[pgr_rom_addr]
             }
             _ => {
                 println!("Ignoring memory read access at {:#04x}", addr);
@@ -49,6 +62,9 @@ impl Mem for Bus {
             PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END => {
                 let _mirror_down_addr = addr & 0b0000_0100_0000_0111;
                 todo!("PPU is not supported yet");
+            }
+            PGR_ROM_START..=PGR_ROM_END => {
+                println!("Attempt to write to ROM address space");
             }
             _ => {
                 println!("Ignoring memory write access at {:#04x}", addr);
