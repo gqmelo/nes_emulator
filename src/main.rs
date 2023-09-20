@@ -72,14 +72,16 @@ fn main() {
         .create_texture_target(PixelFormatEnum::RGB24, 32, 32)
         .unwrap();
 
-    let bus = match args.rom_file {
+    let mut cpu = match args.rom_file {
         Some(rom_file) => {
             let mut file = File::open(rom_file.clone()).unwrap();
             let mut raw = Vec::new();
             match file.read_to_end(&mut raw) {
                 Ok(_) => {
                     let rom = Rom::new(&raw);
-                    Bus::new(rom.unwrap())
+                    let bus = Bus::new(rom.unwrap());
+                    let program_start_addr = bus.mem_read_u16(0xFFFC);
+                    CPU::new(bus, program_start_addr)
                 }
                 Err(_) => {
                     panic!("Could not read file {}", rom_file.display())
@@ -92,11 +94,12 @@ fn main() {
                 0x00, 0x00,
             ];
             let rom = Rom::new(&raw);
-            Bus::new(rom.unwrap())
+            let bus = Bus::new(rom.unwrap());
+            let mut cpu = CPU::new(bus, 0x0600);
+            cpu.load(game_code);
+            cpu
         }
     };
-    let mut cpu = CPU::new(bus, 0x0600);
-    cpu.load(game_code);
 
     let mut screen_state = [0 as u8; 32 * 3 * 32];
     let mut rng = rand::thread_rng();

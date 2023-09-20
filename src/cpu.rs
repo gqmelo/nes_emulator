@@ -37,8 +37,8 @@ pub struct CPU {
     pub stack_pointer: u8,
     pub status: u8,
     pub program_counter: u16,
+    pub bus: Bus,
     program_start_addr: u16,
-    bus: Bus,
 }
 
 impl Mem for CPU {
@@ -67,7 +67,7 @@ impl CPU {
             register_y: 0,
             stack_pointer: 0xFF,
             status: 0,
-            program_counter: 0,
+            program_counter: program_start_addr,
             program_start_addr: program_start_addr,
             bus: bus,
         }
@@ -86,7 +86,7 @@ impl CPU {
         self.reset();
     }
 
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.register_a = 0;
         self.register_x = 0;
         self.register_y = 0;
@@ -208,7 +208,6 @@ impl CPU {
 
     fn adc(&mut self, mode: &AddressingMode) {
         let addr = self.get_operand_address(mode);
-        println!("{:#04x}", addr);
         let value = self.mem_read(addr);
         self.add_to_register_a(value);
     }
