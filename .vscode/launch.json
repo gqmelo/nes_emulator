@@ -21,6 +21,20 @@
     {
       "type": "lldb",
       "request": "launch",
+      "name": "Debug nestest.nes",
+      "cargo": {
+        "args": ["build", "--bin=nes_emulator", "--package=nes_emulator"],
+        "filter": {
+          "name": "nes_emulator",
+          "kind": "bin"
+        }
+      },
+      "args": ["--rom-file", "nestest.nes"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
       "name": "Debug unit tests in executable 'nes_emulator'",
       "cargo": {
         "args": [

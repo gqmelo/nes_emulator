@@ -37,7 +37,8 @@ impl Mem for Bus {
             }
             PPU_REGISTERS..=PPU_REGISTERS_MIRRORS_END => {
                 let _mirror_down_addr = addr & 0b0000_0100_0000_0111;
-                todo!("PPU is not supported yet");
+                // println!("PPU is not supported yet");
+                0
             }
             PGR_ROM_START..=PGR_ROM_END => {
                 let mut pgr_rom_addr = (addr - 0x8000) as usize;
