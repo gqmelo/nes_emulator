@@ -1490,7 +1490,7 @@ mod test {
         #[values(
             (0x05, 0b0000_0011), // a == M
             (0x04, 0b0000_0001), // a >= M
-            (0x06, 0b0000_0000), // a < M
+            (0x06, 0b1000_0000), // a < M
         )]
         value_and_expected_status: (u8, u8),
     ) {
@@ -1512,7 +1512,7 @@ mod test {
         #[values(
             (0x05, 0b0000_0011), // a == M
             (0x04, 0b0000_0001), // a >= M
-            (0x06, 0b0000_0000), // a < M
+            (0x06, 0b1000_0000), // a < M
         )]
         value_and_status: (u8, u8),
     ) {
@@ -1533,7 +1533,7 @@ mod test {
         #[values(
             (0x05, 0b0000_0011), // a == M
             (0x04, 0b0000_0001), // a >= M
-            (0x06, 0b0000_0000), // a < M
+            (0x06, 0b1000_0000), // a < M
         )]
         value_and_status: (u8, u8),
     ) {
@@ -1545,24 +1545,6 @@ mod test {
         cpu.mem_write(0x19e5, value_to_compare);
         cpu.run();
         assert_eq!(cpu.register_a, 0x05);
-        assert_eq!(cpu.status, expected_status);
-    }
-
-    #[rstest]
-    fn cmp_negative_flag(
-        mut cpu: CPU,
-        #[values(
-            (0xf5, 0b1000_0011), // a == M
-            (0xf4, 0b1000_0001), // a >= M
-            (0xf6, 0b1000_0000), // a < M
-        )]
-        value_and_status: (u8, u8),
-    ) {
-        let (value_to_compare, expected_status) = value_and_status;
-        cpu.load(vec![0xc9, value_to_compare, 0x00]);
-        cpu.register_a = 0xf5;
-        cpu.run();
-        assert_eq!(cpu.register_a, 0xf5);
         assert_eq!(cpu.status, expected_status);
     }
 
@@ -2251,7 +2233,7 @@ mod test {
         cpu.status = 0b1101_0010;
         cpu.run();
         assert_eq!(cpu.stack_pointer, 0xfc);
-        assert_eq!(cpu.mem_read(0x01fd), 0b1101_0010);
+        assert_eq!(cpu.mem_read(0x01fd), 0b1111_0010);
         assert_eq!(cpu.status, 0b1101_0010);
     }
 
@@ -2284,7 +2266,7 @@ mod test {
         cpu.run();
         assert_eq!(cpu.stack_pointer, 0xfd);
         assert_eq!(cpu.register_x, 0x05);
-        assert_eq!(cpu.status, 0b1101_0010);
+        assert_eq!(cpu.status, 0b1110_0010);
     }
 
     #[rstest]
@@ -2327,7 +2309,7 @@ mod test {
         cpu.mem_write(0x1ff, 0b1101_0010);
         cpu.run();
         assert_eq!(cpu.stack_pointer, 0xff);
-        assert_eq!(cpu.status, 0b1101_0010);
+        assert_eq!(cpu.status, 0b1110_0010);
     }
 
     #[rstest]
