@@ -113,6 +113,13 @@ lazy_static! {
         OpCode::new(0x6c, "JMP", 3, AddressingMode::Indirect),
         OpCode::new(0x20, "JSR", 6, AddressingMode::Absolute),
         OpCode::new(0x60, "RTS", 6, AddressingMode::NoneAddressing),
+        // LAX (unofficial)
+        OpCode::new(0xa7, "*LAX", 3, AddressingMode::ZeroPage),
+        OpCode::new(0xb7, "*LAX", 4, AddressingMode::ZeroPageY),
+        OpCode::new(0xaf, "*LAX", 4, AddressingMode::Absolute),
+        OpCode::new(0xbf, "*LAX", 4, AddressingMode::AbsoluteY),
+        OpCode::new(0xa3, "*LAX", 6, AddressingMode::IndirectX),
+        OpCode::new(0xb3, "*LAX", 5, AddressingMode::IndirectY),
         // LDA
         OpCode::new(0xa9, "LDA", 2, AddressingMode::Immediate),
         OpCode::new(0xa5, "LDA", 3, AddressingMode::ZeroPage),
@@ -142,6 +149,7 @@ lazy_static! {
         OpCode::new(0x5e, "LSR", 7, AddressingMode::AbsoluteX),
         // NOP
         OpCode::new(0xea, "NOP", 2, AddressingMode::NoneAddressing),
+        // NOP (unofficial)
         OpCode::new(0x04, "*NOP", 3, AddressingMode::ZeroPage),
         OpCode::new(0x14, "*NOP", 4, AddressingMode::ZeroPageX),
         OpCode::new(0x34, "*NOP", 4, AddressingMode::ZeroPageX),

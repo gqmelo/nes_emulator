@@ -275,6 +275,7 @@ impl CPU {
                 "INY" => self.iny(),
                 "JMP" => self.jmp(&opcode.mode),
                 "JSR" => self.jsr(&opcode.mode),
+                "*LAX" => self.lax(&opcode.mode),
                 "LDA" => self.lda(&opcode.mode),
                 "LDX" => self.ldx(&opcode.mode),
                 "LDY" => self.ldy(&opcode.mode),
@@ -499,6 +500,15 @@ impl CPU {
         self.push_to_stack(((return_addr & 0xFF00) >> 8).try_into().unwrap());
         self.push_to_stack((return_addr & 0x00FF).try_into().unwrap());
         addr
+    }
+
+    fn lax(&mut self, mode: &AddressingMode) -> u16 {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
+        self.register_a = value;
+        self.register_x = value;
+        self.update_zero_and_negative_flags(self.register_a);
+        self.get_next_instruction_program_counter(mode)
     }
 
     fn lda(&mut self, mode: &AddressingMode) -> u16 {
