@@ -266,6 +266,7 @@ impl CPU {
                 "CMP" => self.cmp(&opcode.mode),
                 "CPX" => self.cpx(&opcode.mode),
                 "CPY" => self.cpy(&opcode.mode),
+                "*DCP" => self.dcp(&opcode.mode),
                 "DEC" => self.dec(&opcode.mode),
                 "DEX" => self.dex(),
                 "DEY" => self.dey(),
@@ -273,6 +274,7 @@ impl CPU {
                 "INC" => self.inc(&opcode.mode),
                 "INX" => self.inx(),
                 "INY" => self.iny(),
+                "*ISB" => self.isb(&opcode.mode),
                 "JMP" => self.jmp(&opcode.mode),
                 "JSR" => self.jsr(&opcode.mode),
                 "*LAX" => self.lax(&opcode.mode),
@@ -292,12 +294,15 @@ impl CPU {
                 "RTI" => self.rti(),
                 "RTS" => self.rts(),
                 "SBC" => self.sbc(&opcode.mode),
+                "*SBC" => self.sbc(&opcode.mode),
                 "SEC" => self.set_status_flag(StatusFlag::Carry),
                 "SED" => self.set_status_flag(StatusFlag::Decimal),
                 "SEI" => self.set_status_flag(StatusFlag::InterruptDisable),
+                "*SAX" => self.sax(&opcode.mode),
                 "STA" => self.sta(&opcode.mode),
                 "STX" => self.stx(&opcode.mode),
                 "STY" => self.sty(&opcode.mode),
+                "*SLO" => self.slo(&opcode.mode),
                 "TAX" => self.tax(),
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
@@ -442,6 +447,14 @@ impl CPU {
         self.update_zero_and_negative_flags(register.wrapping_sub(value));
     }
 
+    fn dcp(&mut self, mode: &AddressingMode) -> u16 {
+        let addr = self.get_operand_address(mode);
+        let new_value = self.mem_read(addr).wrapping_sub(1);
+        self.mem_write(addr, new_value);
+        self.compare(self.register_a, new_value);
+        self.get_next_instruction_program_counter(mode)
+    }
+
     fn dec(&mut self, mode: &AddressingMode) -> u16 {
         let addr = self.get_operand_address(mode);
         let new_value = self.mem_read(addr).wrapping_sub(1);
@@ -488,6 +501,14 @@ impl CPU {
         self.register_y = self.register_y.wrapping_add(1);
         self.update_zero_and_negative_flags(self.register_y);
         self.get_next_instruction_program_counter(&AddressingMode::NoneAddressing)
+    }
+
+    fn isb(&mut self, mode: &AddressingMode) -> u16 {
+        let addr = self.get_operand_address(mode);
+        let new_value = self.mem_read(addr).wrapping_add(1);
+        self.mem_write(addr, new_value);
+        self.add_to_register_a(new_value.wrapping_neg().wrapping_sub(1));
+        self.get_next_instruction_program_counter(mode)
     }
 
     fn jmp(&mut self, mode: &AddressingMode) -> u16 {
@@ -618,6 +639,22 @@ impl CPU {
         self.get_next_instruction_program_counter(mode)
     }
 
+    fn slo(&mut self, mode: &AddressingMode) -> u16 {
+        let value = self.get_shift_value(mode);
+
+        if value & 0b1000_0000 > 0 {
+            self.set_status_flag(StatusFlag::Carry);
+        } else {
+            self.clear_status_flag(StatusFlag::Carry);
+        }
+        let new_value = value << 1;
+        self.register_a = self.register_a | new_value;
+        self.update_zero_and_negative_flags(self.register_a);
+
+        self.save_shift_value(mode, new_value);
+        self.get_next_instruction_program_counter(mode)
+    }
+
     fn get_shift_value(&mut self, mode: &AddressingMode) -> u8 {
         match mode {
             AddressingMode::Accumulator => self.register_a,
@@ -696,6 +733,13 @@ impl CPU {
         self.stack_pointer = self.stack_pointer.wrapping_add(1);
         let addr: u16 = 0x100 as u16 + self.stack_pointer as u16;
         return self.mem_read(addr);
+    }
+
+    fn sax(&mut self, mode: &AddressingMode) -> u16 {
+        let addr = self.get_operand_address(mode);
+        let value = self.register_a & self.register_x;
+        self.mem_write(addr, value);
+        self.get_next_instruction_program_counter(mode)
     }
 
     fn sta(&mut self, mode: &AddressingMode) -> u16 {
