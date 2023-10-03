@@ -214,7 +214,7 @@ impl CPU {
         };
 
         return format!(
-            "{:04X}  {}  {} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            "{:04X}  {} {:>4} {:27} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
             self.program_counter,
             code_as_string,
             opcode.mnemonic,
@@ -280,6 +280,7 @@ impl CPU {
                 "LDY" => self.ldy(&opcode.mode),
                 "LSR" => self.lsr(&opcode.mode),
                 "NOP" => self.get_next_instruction_program_counter(&AddressingMode::NoneAddressing),
+                "*NOP" => self.nop_unofficial(opcode),
                 "ORA" => self.ora(&opcode.mode),
                 "PHA" => self.pha(),
                 "PHP" => self.php(),
@@ -522,6 +523,19 @@ impl CPU {
         self.register_y = value;
         self.update_zero_and_negative_flags(self.register_y);
         self.get_next_instruction_program_counter(mode)
+    }
+
+    fn nop_unofficial(&mut self, opcode: &&opcodes::OpCode) -> u16 {
+        match opcode.mode {
+            AddressingMode::NoneAddressing => {
+                self.get_next_instruction_program_counter(&AddressingMode::NoneAddressing)
+            }
+            _ => {
+                let addr = self.get_operand_address(&opcode.mode);
+                let _value = self.mem_read(addr);
+                self.get_next_instruction_program_counter(&opcode.mode)
+            }
+        }
     }
 
     fn asl(&mut self, mode: &AddressingMode) -> u16 {
