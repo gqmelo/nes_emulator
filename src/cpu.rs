@@ -289,10 +289,12 @@ impl CPU {
                 "PHP" => self.php(),
                 "PLA" => self.pla(),
                 "PLP" => self.plp(),
+                "*RLA" => self.rla(&opcode.mode),
                 "ROL" => self.rol(&opcode.mode),
                 "ROR" => self.ror(&opcode.mode),
                 "RTI" => self.rti(),
                 "RTS" => self.rts(),
+                "*RRA" => self.rra(&opcode.mode),
                 "SBC" => self.sbc(&opcode.mode),
                 "*SBC" => self.sbc(&opcode.mode),
                 "SEC" => self.set_status_flag(StatusFlag::Carry),
@@ -303,6 +305,7 @@ impl CPU {
                 "STX" => self.stx(&opcode.mode),
                 "STY" => self.sty(&opcode.mode),
                 "*SLO" => self.slo(&opcode.mode),
+                "*SRE" => self.sre(&opcode.mode),
                 "TAX" => self.tax(),
                 "TAY" => self.tay(),
                 "TSX" => self.tsx(),
@@ -599,6 +602,28 @@ impl CPU {
         self.get_next_instruction_program_counter(mode)
     }
 
+    fn rla(&mut self, mode: &AddressingMode) -> u16 {
+        let old_carry = (0b0000_0001 << StatusFlag::Carry as u8) & self.status;
+        let value = self.get_shift_value(mode);
+
+        let should_set_carry = value & 0b1000_0000 > 0;
+        let mut new_value = value << 1;
+        if old_carry > 0 {
+            new_value |= 0b0000_0001;
+        }
+        if should_set_carry {
+            self.set_status_flag(StatusFlag::Carry);
+        } else {
+            self.clear_status_flag(StatusFlag::Carry);
+        }
+        self.register_a = self.register_a & new_value;
+
+        self.update_zero_and_negative_flags(self.register_a);
+
+        self.save_shift_value(mode, new_value);
+        self.get_next_instruction_program_counter(mode)
+    }
+
     fn rol(&mut self, mode: &AddressingMode) -> u16 {
         let old_carry = (0b0000_0001 << StatusFlag::Carry as u8) & self.status;
         let value = self.get_shift_value(mode);
@@ -639,6 +664,27 @@ impl CPU {
         self.get_next_instruction_program_counter(mode)
     }
 
+    fn rra(&mut self, mode: &AddressingMode) -> u16 {
+        let old_carry = (0b0000_0001 << StatusFlag::Carry as u8) & self.status;
+        let value = self.get_shift_value(mode);
+
+        let should_set_carry = value & 0b0000_0001 > 0;
+        let mut new_value = value >> 1;
+        if old_carry > 0 {
+            new_value |= 0b1000_0000;
+        }
+        if should_set_carry {
+            self.set_status_flag(StatusFlag::Carry);
+        } else {
+            self.clear_status_flag(StatusFlag::Carry);
+        }
+        self.add_to_register_a(new_value);
+        self.update_zero_and_negative_flags(self.register_a);
+
+        self.save_shift_value(mode, new_value);
+        self.get_next_instruction_program_counter(mode)
+    }
+
     fn slo(&mut self, mode: &AddressingMode) -> u16 {
         let value = self.get_shift_value(mode);
 
@@ -649,6 +695,22 @@ impl CPU {
         }
         let new_value = value << 1;
         self.register_a = self.register_a | new_value;
+        self.update_zero_and_negative_flags(self.register_a);
+
+        self.save_shift_value(mode, new_value);
+        self.get_next_instruction_program_counter(mode)
+    }
+
+    fn sre(&mut self, mode: &AddressingMode) -> u16 {
+        let value = self.get_shift_value(mode);
+
+        if value & 0b0000_0001 > 0 {
+            self.set_status_flag(StatusFlag::Carry);
+        } else {
+            self.clear_status_flag(StatusFlag::Carry);
+        }
+        let new_value = value >> 1;
+        self.register_a = self.register_a ^ new_value;
         self.update_zero_and_negative_flags(self.register_a);
 
         self.save_shift_value(mode, new_value);

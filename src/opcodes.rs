@@ -207,6 +207,14 @@ lazy_static! {
         OpCode::new(0x08, "PHP", 3, AddressingMode::NoneAddressing),
         OpCode::new(0x68, "PLA", 4, AddressingMode::NoneAddressing),
         OpCode::new(0x28, "PLP", 4, AddressingMode::NoneAddressing),
+        // RLA (unofficial)
+        OpCode::new(0x27, "*RLA", 5, AddressingMode::ZeroPage),
+        OpCode::new(0x37, "*RLA", 6, AddressingMode::ZeroPageX),
+        OpCode::new(0x2f, "*RLA", 6, AddressingMode::Absolute),
+        OpCode::new(0x3f, "*RLA", 7, AddressingMode::AbsoluteX),
+        OpCode::new(0x3b, "*RLA", 7, AddressingMode::AbsoluteY),
+        OpCode::new(0x23, "*RLA", 8, AddressingMode::IndirectX),
+        OpCode::new(0x33, "*RLA", 8, AddressingMode::IndirectY),
         // ROL
         OpCode::new(0x2a, "ROL", 2, AddressingMode::Accumulator),
         OpCode::new(0x26, "ROL", 5, AddressingMode::ZeroPage),
@@ -263,6 +271,22 @@ lazy_static! {
         OpCode::new(0x1b, "*SLO", 7, AddressingMode::AbsoluteY),
         OpCode::new(0x03, "*SLO", 8, AddressingMode::IndirectX),
         OpCode::new(0x13, "*SLO", 8, AddressingMode::IndirectY),
+        // SRE (unofficial)
+        OpCode::new(0x47, "*SRE", 5, AddressingMode::ZeroPage),
+        OpCode::new(0x57, "*SRE", 6, AddressingMode::ZeroPageX),
+        OpCode::new(0x4f, "*SRE", 6, AddressingMode::Absolute),
+        OpCode::new(0x5f, "*SRE", 7, AddressingMode::AbsoluteX),
+        OpCode::new(0x5b, "*SRE", 7, AddressingMode::AbsoluteY),
+        OpCode::new(0x43, "*SRE", 8, AddressingMode::IndirectX),
+        OpCode::new(0x53, "*SRE", 8, AddressingMode::IndirectY),
+        // RRA (unofficial)
+        OpCode::new(0x67, "*RRA", 5, AddressingMode::ZeroPage),
+        OpCode::new(0x77, "*RRA", 6, AddressingMode::ZeroPageX),
+        OpCode::new(0x6f, "*RRA", 6, AddressingMode::Absolute),
+        OpCode::new(0x7f, "*RRA", 7, AddressingMode::AbsoluteX),
+        OpCode::new(0x7b, "*RRA", 7, AddressingMode::AbsoluteY),
+        OpCode::new(0x63, "*RRA", 8, AddressingMode::IndirectX),
+        OpCode::new(0x73, "*RRA", 8, AddressingMode::IndirectY),
         // RTI
         OpCode::new(0x40, "RTI", 6, AddressingMode::NoneAddressing),
         //
