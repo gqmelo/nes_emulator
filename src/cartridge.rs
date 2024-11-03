@@ -12,7 +12,7 @@ pub enum Mirroring {
 
 #[derive(Debug)]
 pub struct Rom {
-    pub pgr_rom: Vec<u8>,
+    pub prg_rom: Vec<u8>,
     pub chr_rom: Vec<u8>,
     pub mapper: u8,
     pub screen_mirroring: Mirroring,
@@ -36,12 +36,12 @@ impl Rom {
             return Err("iNES version unsupported. Only iNES 1.0 is supported.".to_string());
         }
 
-        let pgr_rom_size = raw[4] as usize * PRG_ROM_PAGE_SIZE;
+        let prg_rom_size = raw[4] as usize * PRG_ROM_PAGE_SIZE;
         let chr_rom_size = raw[5] as usize * CHR_ROM_PAGE_SIZE;
 
-        let pgr_rom_start = 16 + if has_trainer { TRAINER_SIZE } else { 0 };
-        let pgr_rom_end = pgr_rom_start + pgr_rom_size;
-        let chr_rom_start = pgr_rom_end;
+        let prg_rom_start = 16 + if has_trainer { TRAINER_SIZE } else { 0 };
+        let prg_rom_end = prg_rom_start + prg_rom_size;
+        let chr_rom_start = prg_rom_end;
         let chr_rom_end = chr_rom_start + chr_rom_size;
 
         let is_four_screen = (raw[6] & 0b1000) != 0;
@@ -53,7 +53,7 @@ impl Rom {
         };
 
         Ok(Rom {
-            pgr_rom: raw[pgr_rom_start..pgr_rom_end].to_vec(),
+            prg_rom: raw[prg_rom_start..prg_rom_end].to_vec(),
             chr_rom: raw[chr_rom_start..chr_rom_end].to_vec(),
             mapper: 0,
             screen_mirroring: screen_mirroring,
@@ -141,8 +141,8 @@ mod test {
         assert!(rom.is_ok());
 
         let rom = rom.unwrap();
-        assert_eq!(rom.pgr_rom.len(), PRG_ROM_PAGE_SIZE);
-        for byte in rom.pgr_rom.iter() {
+        assert_eq!(rom.prg_rom.len(), PRG_ROM_PAGE_SIZE);
+        for byte in rom.prg_rom.iter() {
             assert_eq!(byte, &0x78);
         }
         for byte in rom.chr_rom.iter() {
@@ -165,8 +165,8 @@ mod test {
         assert!(rom.is_ok());
 
         let rom = rom.unwrap();
-        assert_eq!(rom.pgr_rom.len(), PRG_ROM_PAGE_SIZE);
-        for byte in rom.pgr_rom.iter() {
+        assert_eq!(rom.prg_rom.len(), PRG_ROM_PAGE_SIZE);
+        for byte in rom.prg_rom.iter() {
             assert_eq!(byte, &0x78);
         }
         for byte in rom.chr_rom.iter() {
