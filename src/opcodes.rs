@@ -126,7 +126,7 @@ lazy_static! {
         OpCode::new(0xf3, "*ISB", 8, AddressingMode::IndirectY),
         // JMP
         OpCode::new(0x4c, "JMP", 3, AddressingMode::Absolute),
-        OpCode::new(0x6c, "JMP", 3, AddressingMode::Indirect),
+        OpCode::new(0x6c, "JMP", 5, AddressingMode::Indirect),
         OpCode::new(0x20, "JSR", 6, AddressingMode::Absolute),
         OpCode::new(0x60, "RTS", 6, AddressingMode::NoneAddressing),
         // LAX (unofficial)
